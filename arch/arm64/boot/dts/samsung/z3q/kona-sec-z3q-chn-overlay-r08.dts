@@ -11634,6 +11634,7 @@
 
 				samsung,flash_gamma_tables {
 
+					/*
 					vrr60@0 {
 						samsung,refresh_rate = <0x3c>;
 						samsung,ddi_vfp = <0x10>;
@@ -11671,6 +11672,8 @@
 							samsung,ddi_vactive = <0xc80>;
 						};
 					};
+					
+					*/
 
 					vrr120hs@1 {
 						samsung,refresh_rate = <0x78>;
@@ -11702,6 +11705,7 @@
 						samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2822>;
 						samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2823>;
 
+						/*
 						vrr96hs {
 							samsung,refresh_rate = <0x60>;
 							samsung,br_tbl_sot_hs_mode;
@@ -11710,7 +11714,10 @@
 							samsung,ddi_vbp = <0x10>;
 							samsung,ddi_vactive = <0xc80>;
 						};
+						*/
 					};
+					
+					/*
 
 					vrr60hs@2 {
 						samsung,refresh_rate = <0x3c>;
@@ -11742,6 +11749,7 @@
 						samsung,flash_gamma_0xc8_check_sum_start_offset = <0x2822>;
 						samsung,flash_gamma_0xc8_check_sum_end_offset = <0x2823>;
 					};
+					*/
 				};
 
 				qcom,mdss-dsi-display-timings {
@@ -12161,6 +12169,7 @@
 						qcom,mdss-dsc-bit-per-pixel = <0x8>;
 						qcom,mdss-dsc-block-prediction-enable;
 					};
+					*/
 
 					hd120hs {
 						qcom,display-topology = <0x1 0x1 0x1 0x2 0x2 0x1>;
@@ -12199,7 +12208,6 @@
 						qcom,mdss-dsc-block-prediction-enable;
 					};
 					
-					*/
 				};
 
 				qcom,panel-supply-entries {
