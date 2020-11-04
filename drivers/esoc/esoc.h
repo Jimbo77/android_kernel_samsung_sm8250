@@ -17,7 +17,6 @@
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/subsystem_notif.h>
 #include <linux/ipc_logging.h>
-#include <linux/reboot.h>
 
 #define ESOC_MDM_IPC_PAGES	10
 
@@ -96,7 +95,6 @@ struct esoc_clink {
 	bool primary;
 	bool statusline_not_a_powersource;
 	bool userspace_handle_shutdown;
-	struct notifier_block reboot_nb;
 	struct esoc_client_hook *client_hook[ESOC_MAX_HOOKS];
 };
 

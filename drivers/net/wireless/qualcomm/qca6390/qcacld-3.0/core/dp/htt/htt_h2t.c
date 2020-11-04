@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -59,13 +59,8 @@
 #ifdef ATH_11AC_TXCOMPACT
 #define HTT_SEND_HTC_PKT(pdev, pkt)                              \
 do {                                                             \
-	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) ==       \
-	    QDF_STATUS_SUCCESS) {                                \
+	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS) \
 		htt_htc_misc_pkt_list_add(pdev, pkt);            \
-	} else {                                                 \
-		qdf_nbuf_free((qdf_nbuf_t)(pkt->htc_pkt.pNetBufContext));   \
-		htt_htc_pkt_free(pdev, pkt);                     \
-	}                                                        \
 } while (0)
 #else
 #define HTT_SEND_HTC_PKT(pdev, ppkt) \
@@ -219,12 +214,8 @@ QDF_STATUS htt_h2t_frag_desc_bank_cfg_msg(struct htt_pdev_t *pdev)
 
 	rc = htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt);
 #ifdef ATH_11AC_TXCOMPACT
-	if (rc == QDF_STATUS_SUCCESS) {
+	if (rc == QDF_STATUS_SUCCESS)
 		htt_htc_misc_pkt_list_add(pdev, pkt);
-	} else {
-		qdf_nbuf_free(msg);
-		htt_htc_pkt_free(pdev, pkt);
-	}
 #endif
 
 	return rc;
@@ -305,7 +296,9 @@ QDF_STATUS htt_h2t_ver_req_msg(struct htt_pdev_t *pdev)
 	SET_HTC_PACKET_NET_BUF_CONTEXT(&pkt->htc_pkt, msg);
 	HTT_SEND_HTC_PKT(pdev, pkt);
 
-	ol_tx_deduct_one_credit(pdev->txrx_pdev);
+	if ((pdev->cfg.is_high_latency) &&
+	    (!pdev->cfg.default_tx_comp_req))
+		ol_tx_target_credit_update(pdev->txrx_pdev, -1);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -750,17 +743,15 @@ htt_h2t_rx_ring_cfg_msg_hl(struct htt_pdev_t *pdev)
 	SET_HTC_PACKET_NET_BUF_CONTEXT(&pkt->htc_pkt, msg);
 
 #ifdef ATH_11AC_TXCOMPACT
-	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS) {
+	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS)
 		htt_htc_misc_pkt_list_add(pdev, pkt);
-	} else {
-		qdf_nbuf_free(msg);
-		htt_htc_pkt_free(pdev, pkt);
-	}
 #else
 	htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt);
 #endif
 
-	ol_tx_deduct_one_credit(pdev->txrx_pdev);
+	if ((pdev->cfg.is_high_latency) &&
+	    (!pdev->cfg.default_tx_comp_req))
+		ol_tx_target_credit_update(pdev->txrx_pdev, -1);
 
 	return QDF_STATUS_SUCCESS;
 }
@@ -863,17 +854,15 @@ htt_h2t_dbg_stats_get(struct htt_pdev_t *pdev,
 	SET_HTC_PACKET_NET_BUF_CONTEXT(&pkt->htc_pkt, msg);
 
 #ifdef ATH_11AC_TXCOMPACT
-	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS) {
+	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS)
 		htt_htc_misc_pkt_list_add(pdev, pkt);
-	} else {
-		qdf_nbuf_free(msg);
-		htt_htc_pkt_free(pdev, pkt);
-	}
 #else
 	htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt);
 #endif
 
-	ol_tx_deduct_one_credit(pdev->txrx_pdev);
+	if ((pdev->cfg.is_high_latency) &&
+	    (!pdev->cfg.default_tx_comp_req))
+		ol_tx_target_credit_update(pdev->txrx_pdev, -1);
 
 	return 0;
 }
@@ -925,7 +914,9 @@ A_STATUS htt_h2t_sync_msg(struct htt_pdev_t *pdev, uint8_t sync_cnt)
 	SET_HTC_PACKET_NET_BUF_CONTEXT(&pkt->htc_pkt, msg);
 	HTT_SEND_HTC_PKT(pdev, pkt);
 
-	ol_tx_deduct_one_credit(pdev->txrx_pdev);
+	if ((pdev->cfg.is_high_latency) &&
+	    (!pdev->cfg.default_tx_comp_req))
+		ol_tx_target_credit_update(pdev->txrx_pdev, -1);
 
 	return A_OK;
 }
@@ -988,17 +979,15 @@ htt_h2t_aggr_cfg_msg(struct htt_pdev_t *pdev,
 	SET_HTC_PACKET_NET_BUF_CONTEXT(&pkt->htc_pkt, msg);
 
 #ifdef ATH_11AC_TXCOMPACT
-	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS) {
+	if (htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt) == QDF_STATUS_SUCCESS)
 		htt_htc_misc_pkt_list_add(pdev, pkt);
-	} else {
-		qdf_nbuf_free(msg);
-		htt_htc_pkt_free(pdev, pkt);
-	}
 #else
 	htc_send_pkt(pdev->htc_pdev, &pkt->htc_pkt);
 #endif
 
-	ol_tx_deduct_one_credit(pdev->txrx_pdev);
+	if ((pdev->cfg.is_high_latency) &&
+	    (!pdev->cfg.default_tx_comp_req))
+		ol_tx_target_credit_update(pdev->txrx_pdev, -1);
 
 	return 0;
 }

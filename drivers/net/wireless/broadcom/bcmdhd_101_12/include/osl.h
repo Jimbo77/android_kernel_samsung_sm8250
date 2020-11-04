@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef _osl_h_
@@ -182,18 +182,6 @@ do { \
 #endif
 #ifndef PKTISCHAINED
 #define PKTISCHAINED(skb)		FALSE
-#endif
-
-#ifndef PKTGETPROFILEIDX
-#define PKTGETPROFILEIDX(p)		(-1)
-#endif
-
-#ifndef PKTCLRPROFILEIDX
-#define PKTCLRPROFILEIDX(p)
-#endif
-
-#ifndef PKTSETPROFILEIDX
-#define PKTSETPROFILEIDX(p, idx)	BCM_REFERENCE(idx)
 #endif
 
 /* Lbuf with fraglist */

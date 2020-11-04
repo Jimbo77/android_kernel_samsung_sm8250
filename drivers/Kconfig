@@ -11,8 +11,6 @@ source "drivers/connector/Kconfig"
 
 source "drivers/gnss/Kconfig"
 
-source "drivers/gps/Kconfig"
-
 source "drivers/mtd/Kconfig"
 
 source "drivers/of/Kconfig"
@@ -249,13 +247,11 @@ source "drivers/muic/Kconfig"
 
 source "drivers/ccic/Kconfig"
 
-source "drivers/redriver/Kconfig"
-
 source "drivers/motor/Kconfig"
 
 source "drivers/fingerprint/Kconfig"
 
-source "drivers/security/samsung/five_tee_driver/Kconfig"
+source "drivers/five/Kconfig"
 
 source "drivers/security/samsung/icdrv/Kconfig"
 
@@ -265,7 +261,4 @@ source "drivers/perf_mgr/Kconfig"
 
 source "drivers/kperfmon/Kconfig"
 
-source "drivers/security/samsung/tzic/Kconfig"
-
-source "drivers/spu_verify/Kconfig"
 endmenu

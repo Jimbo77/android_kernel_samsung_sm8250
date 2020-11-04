@@ -30,6 +30,7 @@ dts-dirs += y2q
 dts-dirs += z3q
 
 
+
 always          := $(dtb-y)
 subdir-y        := $(dts-dirs)
 

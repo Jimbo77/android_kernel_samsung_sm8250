@@ -18,6 +18,7 @@
 #ifndef __S2ASL01_SWITCHING_H
 #define __S2ASL01_SWITCHING_H __FILE__
 
+#include <linux/pm_wakeup.h>
 #include <linux/power_supply.h>
 #include <linux/i2c.h>
 #include <linux/device.h>
@@ -167,6 +168,7 @@ struct s2asl01_switching_data {
 	struct device           *dev;
 	struct i2c_client       *client;
 	struct mutex            i2c_lock;
+	struct wakeup_source limiter_wake_lock;
 	struct s2asl01_platform_data *pdata;
 	struct power_supply     *psy_sw;
 	struct workqueue_struct *wqueue;	

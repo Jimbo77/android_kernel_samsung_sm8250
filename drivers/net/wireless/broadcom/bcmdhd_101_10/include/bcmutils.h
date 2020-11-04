@@ -1,7 +1,7 @@
 /*
  * Misc useful os-independent macros and functions.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef	_bcmutils_h_
@@ -491,9 +491,8 @@ uint16 bcmhex2bin(const uint8* hex, uint hex_len, uint8 *buf, uint buf_len);
 #define BCME_NOCHAN			-70	/* Registration with 0 chans in list */
 #define BCME_PKTTOSS			-71	/* Pkt tossed */
 #define BCME_DNGL_DEVRESET		-72	/* dongle re-attach during DEVRESET */
-#define BCME_ROAM			-73	/* Roam related failures */
 
-#define BCME_LAST			BCME_ROAM
+#define BCME_LAST			BCME_DNGL_DEVRESET
 
 #define BCME_NOTENABLED BCME_DISABLED
 
@@ -582,7 +581,6 @@ uint16 bcmhex2bin(const uint8* hex, uint hex_len, uint8 *buf, uint buf_len);
 	"Registration with zero channels", \
 	"pkt toss", \
 	"Dongle Devreset", \
-	"Critical roam in progress", \
 }
 #endif	/* BCMUTILS_ERR_CODES */
 
@@ -625,7 +623,7 @@ uint16 bcmhex2bin(const uint8* hex, uint hex_len, uint8 *buf, uint buf_len);
 #define ROUNDDN(p, align)	((p) & ~((align) - 1))
 #define	ISALIGNED(a, x)		(((uintptr)(a) & ((x) - 1)) == 0)
 #define ALIGN_ADDR(addr, boundary) (void *)(((uintptr)(addr) + (boundary) - 1) \
-	                                         & ~((uintptr)(boundary) - 1))
+	                                         & ~((boundary) - 1))
 #define ALIGN_SIZE(size, boundary) (((size) + (boundary) - 1) \
 	                                         & ~((boundary) - 1))
 #define	ISPOWEROF2(x)		((((x) - 1) & (x)) == 0)
@@ -749,9 +747,9 @@ static INLINE uint32 getbit##NB(void *ptr, uint32 ix)               \
 	return ((*a >> pos) & MSK);                                     \
 }
 
-DECLARE_MAP_API(2, 4, 1, 15u, 0x0003u) /* setbit2() and getbit2() */
-DECLARE_MAP_API(4, 3, 2, 7u, 0x000Fu) /* setbit4() and getbit4() */
-DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
+DECLARE_MAP_API(2, 4, 1, 15U, 0x0003) /* setbit2() and getbit2() */
+DECLARE_MAP_API(4, 3, 2, 7U, 0x000F) /* setbit4() and getbit4() */
+DECLARE_MAP_API(8, 2, 3, 3U, 0x00FF) /* setbit8() and getbit8() */
 
 /* basic mux operation - can be optimized on several architectures */
 #define MUX(pred, true, false) ((pred) ? (true) : (false))
@@ -799,7 +797,7 @@ DECLARE_MAP_API(8, 2, 3, 3u, 0x00FFu) /* setbit8() and getbit8() */
 				(ea).octet[3], \
 				(ea).octet[4], \
 				(ea).octet[5]
-/* use only for debug, the string length can be changed
+/* XXX use only for debug, the string length can be changed
  * If you want to use this macro to the logic,
  * USE MACF instead
  */
@@ -937,7 +935,7 @@ extern void bcm_print_bytes(const char *name, const uchar *cdata, uint len);
 typedef  uint32 (*bcmutl_rdreg_rtn)(void *arg0, uint arg1, uint32 offset);
 extern uint bcmdumpfields(bcmutl_rdreg_rtn func_ptr, void *arg0, uint arg1, struct fielddesc *str,
                           char *buf, uint32 bufsize);
-extern uint bcm_bitcount(const uint8 *bitmap, uint bytelength);
+extern uint bcm_bitcount(uint8 *bitmap, uint bytelength);
 
 extern int bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...);
 
@@ -1011,8 +1009,7 @@ bcm_cntsetbits(const uint32 u32arg)
 {
 	/* function local scope declaration of const _CSBTBL[] */
 	const uint8 * p = (const uint8 *)&u32arg;
-	/* uint32 cast to avoid uint8 being promoted to int for arithmetic operation */
-	return ((uint32)_CSBTBL[p[0]] + _CSBTBL[p[1]] + _CSBTBL[p[2]] + _CSBTBL[p[3]]);
+	return (_CSBTBL[p[0]] + _CSBTBL[p[1]] + _CSBTBL[p[2]] + _CSBTBL[p[3]]);
 }
 
 static INLINE int /* C equivalent count of leading 0's in a u32 */
@@ -1022,7 +1019,7 @@ C_bcm_count_leading_zeros(uint32 u32arg)
 	while (u32arg) {
 		shifts++; u32arg >>= 1;
 	}
-	return (32 - shifts);
+	return (32U - shifts);
 }
 
 typedef struct bcm_rand_metadata {
@@ -1064,6 +1061,7 @@ bcm_count_leading_zeros(uint32 u32arg)
  * Macro to count leading zeroes
  *
  */
+/* XXX Merge this and above! */
 #if defined(__GNUC__)
 #define CLZ(x) __builtin_clzl(x)
 #elif defined(__arm__)
@@ -1339,7 +1337,7 @@ typedef struct _counter_tbl_t {
 	bool enabled;				/* Whether to enable printing log */
 } counter_tbl_t;
 
-/*	How to use
+/*	XXX: How to use
 	Eg.: In dhd_linux.c
 	cnt[0]: How many times dhd_start_xmit() was called in every 1sec.
 	cnt[1]: How many bytes were requested to be sent in every 1sec.
@@ -1477,9 +1475,9 @@ static INLINE uint32
 count_trailing_zeros(uint32 val)
 {
 #ifdef BCMDRIVER
-	uint32 c = (uint32)CLZ(val & ((uint32)(-(int)val)));
+	uint32 c = CLZ(val & ((uint32)(-(int)val)));
 #else
-	uint32 c = (uint32)C_bcm_count_leading_zeros(val & ((uint32)(-(int)val)));
+	uint32 c = C_bcm_count_leading_zeros(val & ((uint32)(-(int)val)));
 #endif /* BCMDRIVER */
 	return val ? 31u - c : c;
 }

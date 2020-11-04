@@ -1,7 +1,7 @@
 /*
  * Common OS-independent driver header for rate management.
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,8 +18,10 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
+
+/** XXX Twiki [WlRatespecType] */
 
 #ifndef _bcmwifi_rspec_h_
 #define _bcmwifi_rspec_h_
@@ -198,7 +200,7 @@ typedef uint32	ratespec_t;
 #define RSPEC2KBPS(rspec)	wf_rspec_to_rate(rspec)
 
 /* return rate in unit of 500Kbps */
-/* works only for legacy rate */
+/* XXX works only for legacy rate */
 #define RSPEC2RATE(rspec)	((rspec) & WL_RSPEC_LEGACY_RATE_MASK)
 
 /**

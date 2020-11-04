@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -70,7 +70,7 @@
 #define GET_LIM_PROCESS_DEFD_MESGS(mac) (mac->lim.gLimProcessDefdMsgs)
 #define SET_LIM_PROCESS_DEFD_MESGS(mac, val) \
 		mac->lim.gLimProcessDefdMsgs = val; \
-		pe_debug("Defer LIM msg %d", val);
+		pe_debug("%s Defer LIM messages - value %d", __func__, val);
 
 /* LIM exported function templates */
 #define LIM_MIN_BCN_PR_LENGTH  12
@@ -113,20 +113,6 @@ QDF_STATUS pe_close(struct mac_context *mac);
 QDF_STATUS lim_start(struct mac_context *mac);
 QDF_STATUS pe_start(struct mac_context *mac);
 void pe_stop(struct mac_context *mac);
-
-#ifdef WLAN_FEATURE_11W
-/**
- * lim_stop_pmfcomeback_timer() - stop pmf comeback timer
- * @session: Pointer to PE session
- *
- * Return: None
- */
-void lim_stop_pmfcomeback_timer(struct pe_session *session);
-#else
-static inline void lim_stop_pmfcomeback_timer(struct pe_session *session)
-{
-}
-#endif
 
 /**
  * pe_register_mgmt_rx_frm_callback() - registers callback for receiving
@@ -203,64 +189,20 @@ QDF_STATUS lim_post_msg_high_priority(struct mac_context *mac,
  */
 void lim_message_processor(struct mac_context *, struct scheduler_msg *);
 
-#ifdef QCA_IBSS_SUPPORT
 /**
- * lim_handle_ibss_coalescing() - Function to handle IBSS coalescing.
- * @param  mac	  - Pointer to Global MAC structure
- * @param  pBeacon - Parsed Beacon Frame structure
- * @param  pRxPacketInfo - Pointer to RX packet info structure
- * @pe_session - pointer to pe session
- *
- * This function is called upon receiving Beacon/Probe Response
- * while operating in IBSS mode.
- *
- * @return Status whether to process or ignore received Beacon Frame
+ * Function to handle IBSS coalescing.
+ * Beacon Processing module to call this.
  */
-QDF_STATUS
-lim_handle_ibss_coalescing(struct mac_context *mac,
-			   tpSchBeaconStruct pBeacon,
-			   uint8_t *pRxPacketInfo,
-			   struct pe_session *pe_session);
-#else
-/**
- * lim_handle_ibss_coalescing() - Function to handle IBSS coalescing.
- * @param  mac	  - Pointer to Global MAC structure
- * @param  pBeacon - Parsed Beacon Frame structure
- * @param  pRxPacketInfo - Pointer to RX packet info structure
- * @pe_session - pointer to pe session
- *
- * This function is dummy
- *
- * @return Status whether to process or ignore received Beacon Frame
- */
-static inline QDF_STATUS
-lim_handle_ibss_coalescing(struct mac_context *mac,
-			   tpSchBeaconStruct pBeacon,
-			   uint8_t *pRxPacketInfo,
-			   struct pe_session *pe_session)
-{
-	return QDF_STATUS_SUCCESS;
-}
-#endif
-
+QDF_STATUS lim_handle_ibss_coalescing(struct mac_context *,
+				      tpSchBeaconStruct,
+				      uint8_t *, struct pe_session *);
 /* / Function used by other Sirius modules to read global SME state */
 static inline tLimSmeStates lim_get_sme_state(struct mac_context *mac)
 {
 	return mac->lim.gLimSmeState;
 }
 
-/**
- * lim_received_hb_handler() - This function is called by
- * sch_beacon_process() upon receiving a Beacon on STA. This
- * also gets called upon receiving Probe Response after heat
- * beat failure is detected.
- *
- * @mac - global mac structure
- * @chan_freq - channel frequency indicated in Beacon, Probe
- *
- * Response return - none
- */
-void lim_received_hb_handler(struct mac_context *, uint32_t,
+void lim_received_hb_handler(struct mac_context *, uint8_t,
 			     struct pe_session *);
 
 /* / Function that triggers STA context deletion */
@@ -342,10 +284,6 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 		       struct bss_description *bss_desc_ptr,
 		       enum sir_roam_op_code reason);
 
-void
-lim_check_ft_initial_im_association(struct roam_offload_synch_ind *roam_synch,
-				    struct pe_session *session_entry);
-
 /**
  * pe_disconnect_callback() - Callback to handle deauth event is received
  * from firmware
@@ -353,16 +291,13 @@ lim_check_ft_initial_im_association(struct roam_offload_synch_ind *roam_synch,
  * @vdev_id: VDEV in which the event was received
  * @deauth_disassoc_frame: Deauth/disassoc frame received from firmware
  * @deauth_disassoc_frame_len: Length of @deauth_disassoc_frame
- * @reason_code: Fw sent reason code if disassoc/deauth frame is not
- * available
  *
  * Return: QDF_STATUS
  */
 QDF_STATUS
 pe_disconnect_callback(struct mac_context *mac, uint8_t vdev_id,
 		       uint8_t *deauth_disassoc_frame,
-		       uint16_t deauth_disassoc_frame_len,
-		       uint16_t reason_code);
+		       uint16_t deauth_disassoc_frame_len);
 
 #else
 static inline QDF_STATUS
@@ -377,8 +312,7 @@ pe_roam_synch_callback(struct mac_context *mac_ctx,
 static inline QDF_STATUS
 pe_disconnect_callback(struct mac_context *mac, uint8_t vdev_id,
 		       uint8_t *deauth_disassoc_frame,
-		       uint16_t deauth_disassoc_frame_len,
-		       uint16_t reason_code)
+		       uint16_t deauth_disassoc_frame_len)
 {
 	return QDF_STATUS_E_NOSUPPORT;
 }
@@ -428,10 +362,10 @@ static inline void lim_get_phy_mode(struct mac_context *mac, uint32_t *phyMode,
 
 /* ----------------------------------------------------------------------- */
 static inline void lim_get_rf_band_new(struct mac_context *mac,
-				       enum reg_wifi_band *band,
+				       enum band_info *band,
 				       struct pe_session *pe_session)
 {
-	*band = pe_session ? pe_session->limRFBand : REG_BAND_UNKNOWN;
+	*band = pe_session ? pe_session->limRFBand : BAND_UNKNOWN;
 }
 
 /**

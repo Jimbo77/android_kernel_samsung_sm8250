@@ -41,7 +41,6 @@ QDF_STATUS pmo_core_enable_hw_filter_in_fwr(struct wlan_objmgr_vdev *vdev)
 
 	if (wlan_vdev_is_up(vdev) != QDF_STATUS_SUCCESS) {
 		status = QDF_STATUS_E_NOSUPPORT;
-		pmo_vdev_put_ref(vdev);
 		goto exit_with_status;
 	}
 
@@ -78,7 +77,6 @@ QDF_STATUS pmo_core_disable_hw_filter_in_fwr(struct wlan_objmgr_vdev *vdev)
 
 	if (wlan_vdev_is_up(vdev) != QDF_STATUS_SUCCESS) {
 		status = QDF_STATUS_E_NOSUPPORT;
-		pmo_vdev_put_ref(vdev);
 		goto exit_with_status;
 	}
 

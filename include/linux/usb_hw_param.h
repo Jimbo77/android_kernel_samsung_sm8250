@@ -1,4 +1,3 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2019 Samsung Electronics Co. Ltd.
  *
@@ -9,7 +8,7 @@
  */
 
 /* usb hw param */
-/* usb notify layer v3.4 */
+/* usb notify layer v3.3 */
 
 #define MAX_HWPARAM_STR_LEN 1024
 #define MAX_HWPARAM_STRING 10

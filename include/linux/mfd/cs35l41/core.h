@@ -34,8 +34,6 @@ struct cirrus_mfd_amp {
 	const char *mfd_suffix;
 	const char *dsp_part_name;
 	int index;
-	bool calibration_disable;
-	bool v_val_separate;
 };
 
 #endif

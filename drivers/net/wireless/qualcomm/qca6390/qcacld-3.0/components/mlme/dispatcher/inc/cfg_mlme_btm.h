@@ -72,7 +72,7 @@
  * btm_offload_config - Configure BTM
  * @Min: 0x00000000
  * @Max: 0xFFFFFFFF
- * @Default: 0x000001c1
+ * @Default: 0x00000041
  *
  * This ini is used to configure BTM
  *
@@ -95,12 +95,7 @@
  *
  * BIT 6: Set this to 1 will send BTM query frame and 0 not sent.
  *
- * BIT 7: Roam BTM candidates based on the roam score instead of BTM preferred
- * value
- *
- * BIT 8: BTM query preference over 11k neighbor report request
- *
- * BIT 9-31: Reserved
+ * BIT 7-31: Reserved
  *
  * Supported Feature: STA
  *
@@ -112,7 +107,7 @@
 	"btm_offload_config", \
 	0x00000000, \
 	0xffffffff, \
-	0x000001c1, \
+	0x00000041, \
 	CFG_VALUE_OR_DEFAULT, \
 	"configure btm offload")
 
@@ -168,7 +163,7 @@
  * btm_sticky_time - Stick time after roaming to new AP by BTM
  * @Min: 0
  * @Max: 0x0000FFFF
- * @Default: 0
+ * @Default: 300
  *
  * This ini is used to configure Stick time after roaming to new AP by BTM.
  * Unit: seconds
@@ -183,7 +178,7 @@
 	"btm_sticky_time", \
 	0, \
 	0x0000FFFF, \
-	0, \
+	300, \
 	CFG_VALUE_OR_DEFAULT, \
 	"configure Stick time after roaming to new AP by BTM")
 
@@ -219,7 +214,7 @@
  * the disassoc imminent
  * @Min: 0
  * @Max: 0xffffffff
- * @Default: 10000
+ * @Default: 0
  *
  * When AP sends, BTM request with disassoc imminent bit set, the STA should
  * roam to a new AP within the disassc timeout provided by the ap. If the Roam
@@ -237,7 +232,7 @@
 			"btm_disassoc_timer_threshold", \
 			0, \
 			0xffffffff, \
-			10000, \
+			0, \
 			CFG_VALUE_OR_DEFAULT, \
 			"BTM disassociation timer threshold")
 
@@ -280,7 +275,7 @@
  * its score is greater than minimum_btm_candidate_score.
  * @Min: 0
  * @Max: 10000
- * @Default: 2600
+ * @Default: 1800
  *
  * This ini is applicable only for candidate selection during BTM roam trigger.
  * For this roam_score_delta_bitmap bit 10 should be set to 1.
@@ -297,7 +292,7 @@
 	"minimum_btm_candidate_score", \
 	0, \
 	10000, \
-	2600, \
+	1800, \
 	CFG_VALUE_OR_DEFAULT, \
 	"Minimum BTM candidate score")
 

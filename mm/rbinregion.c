@@ -335,26 +335,26 @@ static void putback_region(unsigned start_pfn, unsigned long nr_pages)
 /* ion_rbin_heap apis */
 phys_addr_t ion_rbin_allocate(unsigned long size)
 {
-	unsigned long paddr;
+	unsigned long offset;
 
 	if (!try_get_ion_rbin())
-		return -EBUSY;
+		return ION_RBIN_ALLOCATE_FAIL;
 
-	paddr = gen_pool_alloc(region.pool, size);
-	if (!paddr) {
-		paddr = -ENOMEM;
+	offset = gen_pool_alloc(region.pool, size);
+	if (!offset) {
+		offset = ION_RBIN_ALLOCATE_FAIL;
 		goto out;
 	}
-	isolate_region(PFN_DOWN(paddr), size >> PAGE_SHIFT);
+	isolate_region(PFN_DOWN(offset), size >> PAGE_SHIFT);
 out:
 	put_ion_rbin();
 
-	return paddr;
+	return offset;
 }
 
 void ion_rbin_free(phys_addr_t addr, unsigned long size)
 {
-	if (IS_ERR_VALUE(addr))
+	if (addr == ION_RBIN_ALLOCATE_FAIL)
 		return;
 
 	putback_region(PFN_DOWN(addr), size >> PAGE_SHIFT);

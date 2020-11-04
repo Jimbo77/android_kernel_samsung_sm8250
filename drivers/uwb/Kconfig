@@ -83,5 +83,3 @@ config UWB_SR100
 	default n
 	help
 	  NXP SR100 UWB controller support.
-
-source "drivers/uwb/uwb_logger/Kconfig"

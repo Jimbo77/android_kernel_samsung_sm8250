@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -25,8 +25,6 @@
 #include <linux/platform_device.h>
 #include <linux/err.h>
 #include <linux/list.h>
-#include "osif_psoc_sync.h"
-
 #ifdef CONFIG_PLD_USB_CNSS
 #include <net/cnss2.h>
 #endif
@@ -89,24 +87,15 @@ static void pld_usb_remove(struct usb_interface *interface)
 {
 	struct usb_device *pdev = interface_to_usbdev(interface);
 	struct pld_context *pld_context;
-	int errno;
-	struct osif_psoc_sync *psoc_sync;
-
-	errno = osif_psoc_sync_trans_start_wait(&pdev->dev, &psoc_sync);
-	if (errno)
-		return;
-
-	osif_psoc_sync_unregister(&pdev->dev);
-	osif_psoc_sync_wait_for_ops(psoc_sync);
 
 	pld_context = pld_get_global_context();
 
 	if (!pld_context)
-		goto out;
+		return;
 
 	if (atomic_read(&pld_usb_reg_done) != true) {
 		pr_info("%s: already de-registered!\n", __func__);
-		goto out;
+		return;
 	}
 
 	pld_context->ops->remove(&pdev->dev, PLD_BUS_TYPE_USB);
@@ -114,10 +103,6 @@ static void pld_usb_remove(struct usb_interface *interface)
 	pld_del_dev(pld_context, &pdev->dev);
 
 	atomic_set(&pld_usb_reg_done, false);
-out:
-	osif_psoc_sync_trans_stop(psoc_sync);
-	osif_psoc_sync_destroy(psoc_sync);
-
 	pr_info("%s: done!\n", __func__);
 }
 
@@ -225,7 +210,7 @@ static void pld_usb_shutdown(struct usb_interface *interface)
 static void pld_usb_uevent(struct usb_interface *interface, uint32_t status)
 {
 	struct pld_context *pld_context;
-	struct pld_uevent_data data = {0};
+	struct pld_uevent_data data;
 	struct usb_device *pdev = interface_to_usbdev(interface);
 
 	pld_context = pld_get_global_context();

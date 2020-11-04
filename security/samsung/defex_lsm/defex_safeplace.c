@@ -55,7 +55,7 @@ ssize_t task_defex_safeplace_attr_store(struct kobject *kobj,
 	return attribute->store(safeplace, attribute, buf, len);
 }
 
-__visible_for_testing void task_defex_safeplace_release(struct kobject *kobj)
+static void task_defex_safeplace_release(struct kobject *kobj)
 {
 	struct defex_safeplace *safeplace_obj;
 

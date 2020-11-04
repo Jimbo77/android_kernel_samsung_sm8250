@@ -1015,7 +1015,6 @@ static ssize_t proc_static_ftt_write(struct file *file, const char __user *buf,
 	char buffer[PROC_NUMBUF] = {0};
 	const size_t max_len = sizeof(buffer) - 1;
 	int err, static_ftt;
-	u64 prev_vrt, prev_vdelta;
 
 	memset(buffer, 0, sizeof(buffer));
 	if (copy_from_user(buffer, buf, count > max_len ? max_len : count)) {
@@ -1031,22 +1030,15 @@ static ssize_t proc_static_ftt_write(struct file *file, const char __user *buf,
 		return -ESRCH;
 	}
 
-	prev_vrt = task->se.vruntime;
-	prev_vdelta = task->se.ftt_vrt_delta;
 	if(task->se.ftt_mark && static_ftt == 0) {
 		fttstat.ftt_cnt--;
 		ftt_unmark(task);
-		printk_deferred("FTT unset pid %d comm %.20s vrt %llu %llu %llu %llu"
-			"fttcount %d pftt %d w %d\n",
-			task->pid, task->comm,
-			prev_vrt, prev_vdelta, task->se.vruntime, task->se.ftt_vrt_delta,
-			fttstat.ftt_cnt, fttstat.pick_ftt, fttstat.wrong);
+		printk("FTT unset ftt pid %d comm %.20s ftt count: %d pftt %d w %d\n",
+			task->pid, task->comm, fttstat.ftt_cnt, fttstat.pick_ftt, fttstat.wrong);
 	} else if(task->se.ftt_mark == 0 && static_ftt) {
 		fttstat.ftt_cnt++;
 		ftt_mark(task);
-		printk_deferred("FTT set pid %d comm %.20s vrt %llu %llu %llu %llu\n",
-			task->pid, task->comm,
-			prev_vrt, prev_vdelta, task->se.vruntime, task->se.ftt_vrt_delta);
+		printk("FTT set ftt pid %d comm %.20s\n", task->pid, task->comm);
 	}
 
 	put_task_struct(task);
@@ -1980,7 +1972,7 @@ static ssize_t use_hugepage_pool_read(struct file *file, char __user *buf,
 	use = get_task_use_hugepage_pool(task);
 	task_unlock(task);
 	put_task_struct(task);
-	len = snprintf(buffer, sizeof(buffer), "%d\n", use);
+	len = snprintf(buffer, sizeof(buffer), "%hd\n", use);
 	return simple_read_from_buffer(buf, count, ppos, buffer, len);
 }
 

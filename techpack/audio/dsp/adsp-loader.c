@@ -224,10 +224,10 @@ int adsp_ssr(void)
 
 	dev_info(&pdev->dev, "requesting for ADSP restart\n");
 
-#ifndef CONFIG_SEC_SND_DEBUG
+#ifdef FORCE_ADSP_SSR
 	dev_info(&pdev->dev, "Set force adsp ssr regardless of debug level\n");
 	subsys_set_adsp_silent_ssr(true);
-#endif /* CONFIG_SEC_SND_DEBUG */
+#endif /* FORCE_ADSP_SSR */
 
 	/* subsystem_restart_dev has worker queue to handle */
 	rc = subsystem_restart_dev(adsp_dev);

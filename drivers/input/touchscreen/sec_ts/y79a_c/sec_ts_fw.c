@@ -421,7 +421,6 @@ err:
 	return -EIO;
 }
 
-#if !defined(CONFIG_SEC_FACTORY)
 static int sec_ts_memoryblockread(struct sec_ts_data *ts, u32 mem_addr, int mem_size, u8 *buf)
 {
 	int ret;
@@ -518,16 +517,12 @@ static int sec_ts_memoryread(struct sec_ts_data *ts, u32 mem_addr, u8 *mem_data,
 
 	return read_size;
 }
-#endif
 
 static int sec_ts_chunk_update(struct sec_ts_data *ts, u32 addr, u32 size, u8 *data, int retry)
 {
 	u32 fw_size;
 	u32 write_size;
-#if !defined(CONFIG_SEC_FACTORY)
 	u8 *mem_rb;
-#endif
-
 	int ret = 0;
 
 	fw_size = size;
@@ -539,9 +534,6 @@ static int sec_ts_chunk_update(struct sec_ts_data *ts, u32 addr, u32 size, u8 *d
 		goto err_write_fail;
 	}
 
-#if defined(CONFIG_SEC_FACTORY)
-	input_info(true, &ts->client->dev, "%s: verify skip(%d)\n", __func__, ret);
-#else
 	mem_rb = vzalloc(fw_size);
 	if (!mem_rb) {
 		input_err(true, &ts->client->dev, "%s: vzalloc failed\n", __func__);
@@ -571,7 +563,6 @@ static int sec_ts_chunk_update(struct sec_ts_data *ts, u32 addr, u32 size, u8 *d
 
 out:
 	vfree(mem_rb);
-#endif
 err_write_fail:
 	sec_ts_delay(10);
 
@@ -841,18 +832,10 @@ err_request_fw:
 
 static int sec_ts_load_fw_from_bin(struct sec_ts_data *ts)
 {
-	struct sec_tclm_data *data = NULL;
 	const struct firmware *fw_entry;
 	char fw_path[SEC_TS_MAX_FW_PATH];
 	int error = 0;
 	int restore_cal = 0;
-
-#ifdef TCLM_CONCEPT
-	if (ts->plat_data->support_multi_cal && ts->display_mode) {
-		data = ts->tdata2;
-	} else 
-		data = ts->tdata;
-#endif
 
 	if (ts->plat_data->bringup == 1) {
 		error = -1;
@@ -882,7 +865,7 @@ static int sec_ts_load_fw_from_bin(struct sec_ts_data *ts)
 	input_info(true, &ts->client->dev, "%s: request firmware done! size = %d\n", __func__, (int)fw_entry->size);
 
 #ifdef TCLM_CONCEPT
-	sec_tclm_root_of_cal(data, CALPOSITION_TESTMODE);
+	sec_tclm_root_of_cal(ts->tdata, CALPOSITION_TESTMODE);
 	restore_cal = 1;
 #endif
 	/* use virtual tclm_control - magic cal 1 */
@@ -893,9 +876,9 @@ static int sec_ts_load_fw_from_bin(struct sec_ts_data *ts)
 
 #ifdef TCLM_CONCEPT
 	if (restore_cal == 1) {
-		sec_execute_tclm_package(data, 0);
+		sec_execute_tclm_package(ts->tdata, 0);
 	}
-	sec_tclm_root_of_cal(data, CALPOSITION_NONE);
+	sec_tclm_root_of_cal(ts->tdata, CALPOSITION_NONE);
 #endif
 
 	sec_ts_save_version_of_ic(ts);
@@ -919,17 +902,9 @@ static int sec_ts_load_fw(struct sec_ts_data *ts, const char *file_path)
 	long ori_size = 0;
 #ifdef TCLM_CONCEPT
 	int restore_cal = 0;
-	struct sec_tclm_data *data = NULL;
 #endif
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
-
-#ifdef TCLM_CONCEPT
-	if (ts->plat_data->support_multi_cal && ts->display_mode) {
-		data = ts->tdata2;
-	} else 
-		data = ts->tdata;
-#endif
 
 	fp = filp_open(file_path, O_RDONLY, S_IRUSR);
 	if (IS_ERR(fp)) {
@@ -1016,7 +991,7 @@ static int sec_ts_load_fw(struct sec_ts_data *ts, const char *file_path)
 			}
 
 #ifdef TCLM_CONCEPT
-			sec_tclm_root_of_cal(data, CALPOSITION_TESTMODE);
+			sec_tclm_root_of_cal(ts->tdata, CALPOSITION_TESTMODE);
 			restore_cal = 1;
 #endif
 			/* use virtual tclm_control - magic cal 1 */
@@ -1029,14 +1004,14 @@ static int sec_ts_load_fw(struct sec_ts_data *ts, const char *file_path)
 		}
 
 #ifdef TCLM_CONCEPT
-		sec_execute_tclm_package(data, 0);
+		sec_execute_tclm_package(ts->tdata, 0);
 #endif
 done:
 	if (error < 0)
 		input_err(true, ts->dev, "%s: failed update firmware\n",
 				__func__);
 #ifdef TCLM_CONCEPT
-		sec_tclm_root_of_cal(data, CALPOSITION_NONE);
+		sec_tclm_root_of_cal(ts->tdata, CALPOSITION_NONE);
 #endif
 		if (ts->client->irq)
 			enable_irq(ts->client->irq);

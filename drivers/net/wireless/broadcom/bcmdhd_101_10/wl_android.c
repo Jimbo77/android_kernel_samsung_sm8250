@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Android related functions
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #include <linux/module.h>
@@ -411,7 +411,7 @@ typedef struct android_wifi_af_params {
 #define S(x) _S(x)
 
 #define  MAXBANDS    2  /**< Maximum #of bands */
-#define BAND_2G_INDEX      1
+#define BAND_2G_INDEX      0
 #define BAND_5G_INDEX      0
 
 typedef union {
@@ -544,15 +544,6 @@ struct io_cfg {
 #define MAX_BUF_SIZE		(JOIN_PREF_RSSI_SIZE + JOIN_PREF_WPA_HDR_SIZE +	\
 				           (JOIN_PREF_WPA_TUPLE_SIZE * JOIN_PREF_MAX_WPA_TUPLES))
 #endif /* BCMFW_ROAM_ENABLE */
-
-#if defined(CONFIG_TIZEN)
-/*
- * adding these private commands corresponding to atd-server's implementation
- * __atd_control_pm_state()
- */
-#define CMD_POWERSAVEMODE_SET "SETPOWERSAVEMODE"
-#define CMD_POWERSAVEMODE_GET "GETPOWERSAVEMODE"
-#endif /* CONFIG_TIZEN */
 
 #define CMD_DEBUG_VERBOSE          "DEBUG_VERBOSE"
 #ifdef WL_NATOE
@@ -1052,46 +1043,6 @@ static int g_wifi_on = TRUE;
  * Local (static) function definitions
  */
 
-static char* wl_android_get_band_str(u16 band)
-{
-	switch (band) {
-#ifdef WL_6G_BAND
-		case WLC_BAND_6G:
-			return "6G";
-#endif /* WL_6G_BAND */
-		case WLC_BAND_5G:
-			return "5G";
-		case WLC_BAND_2G:
-			return "2G";
-		default:
-			WL_ERR(("Unkown band: %d \n", band));
-			return "Unknown band";
-	}
-}
-
-#ifdef WBTEXT
-static int wl_android_bandstr_to_fwband(char *band, u8 *fw_band)
-{
-	int err = BCME_OK;
-
-	if (!strcasecmp(band, "a")) {
-		*fw_band = WLC_BAND_5G;
-	} else if (!strcasecmp(band, "b")) {
-		*fw_band = WLC_BAND_2G;
-#ifdef WL_6G_BAND
-	} else if (!strcasecmp(band, "6g")) {
-		*fw_band = WLC_BAND_6G;
-#endif /* WL_6G_BAND */
-	} else if (!strcasecmp(band, "all")) {
-		*fw_band = WLC_BAND_ALL;
-	} else {
-		err = BCME_BADBAND;
-	}
-
-	return err;
-}
-#endif /* WBTEXT */
-
 #ifdef WLWFDS
 static int wl_android_set_wfds_hash(
 	struct net_device *dev, char *command, bool enable)
@@ -1325,17 +1276,14 @@ int wl_android_get_chanspec(struct net_device *dev, char *command, int total_len
 	DHD_INFO(("wl_android_get_80211_mode: channel:%d band:%d bandwidth:%d\n",
 		channel, band, bw));
 
-	if (bw == WL_CHANSPEC_BW_160) {
-		bw = WL_CH_BANDWIDTH_160MHZ;
-	} else if (bw == WL_CHANSPEC_BW_80) {
+	if (bw == WL_CHANSPEC_BW_80)
 		bw = WL_CH_BANDWIDTH_80MHZ;
-	} else if (bw == WL_CHANSPEC_BW_40) {
+	else if (bw == WL_CHANSPEC_BW_40)
 		bw = WL_CH_BANDWIDTH_40MHZ;
-	} else if (bw == WL_CHANSPEC_BW_20) {
+	else if	(bw == WL_CHANSPEC_BW_20)
 		bw = WL_CH_BANDWIDTH_20MHZ;
-	} else {
+	else
 		bw = WL_CH_BANDWIDTH_20MHZ;
-	}
 
 	if (bw == WL_CH_BANDWIDTH_40MHZ) {
 		if (CHSPEC_SB_UPPER(chanspec)) {
@@ -1356,11 +1304,9 @@ int wl_android_get_chanspec(struct net_device *dev, char *command, int total_len
 			/* WL_CHANSPEC_CTL_SB_UU */
 			channel += (CH_10MHZ_APART + CH_20MHZ_APART);
 		}
-	} else if (bw == WL_CH_BANDWIDTH_160MHZ) {
-		channel = wf_chspec_primary20_chan(chanspec);
 	}
 	bytes_written = snprintf(command, total_len, "%s channel %d band %s bw %d", CMD_CHANSPEC,
-		channel, wl_android_get_band_str(CHSPEC2WLC_BAND(chanspec)), bw);
+		channel, band == WL_CHANSPEC_BAND_5G ? "5G":"2G", bw);
 
 	DHD_INFO(("wl_android_get_chanspec: command:%s EXIT\n", command));
 	return bytes_written;
@@ -1679,7 +1625,11 @@ wl_android_get_roam_trigger(struct net_device *dev, char *command, int total_len
 	}
 
 	chanspec = wl_chspec_driver_to_host(chsp);
-	band = CHSPEC2WLC_BAND(chanspec);
+	band = chanspec & WL_CHANSPEC_BAND_MASK;
+	if (band == WL_CHANSPEC_BAND_5G)
+		band = WLC_BAND_5G;
+	else
+		band = WLC_BAND_2G;
 
 	if (wl_android_check_wbtext_policy(dev)) {
 #ifdef WBTEXT
@@ -1882,18 +1832,9 @@ static int wl_android_get_roam_delta(
 	if (wldev_ioctl_get(dev, WLC_GET_ROAM_DELTA, roam_delta,
 		sizeof(roam_delta))) {
 		roam_delta[1] = WLC_BAND_5G;
-#ifdef WL_6G_BAND
 		if (wldev_ioctl_get(dev, WLC_GET_ROAM_DELTA, roam_delta,
-			sizeof(roam_delta))) {
-			roam_delta[1] = WLC_BAND_6G;
-#endif /* WL_6G_BAND */
-			if (wldev_ioctl_get(dev, WLC_GET_ROAM_DELTA, roam_delta,
-				sizeof(roam_delta))) {
-				return -1;
-			}
-#ifdef WL_6G_BAND
-		}
-#endif /* WL_6G_BAND */
+		                    sizeof(roam_delta)))
+			return -1;
 	}
 
 	bytes_written = snprintf(command, total_len, "%s %d",
@@ -3562,7 +3503,7 @@ wl_cfg80211_get_sta_info(struct net_device *dev, char* command, int total_len)
 	wl_if_stats_t *if_stats = NULL;
 
 	BCM_REFERENCE(if_stats);
-	/* This Command used during only SoftAP mode. */
+	/* XXX: This Command used during only SoftAP mode. */
 	WL_DBG(("%s\n", command));
 
 	/* Check the current op_mode */
@@ -3629,7 +3570,7 @@ wl_cfg80211_get_sta_info(struct net_device *dev, char* command, int total_len)
 			WL_ERR(("Get sta_info ERR %d\n", ret));
 
 #ifdef BIGDATA_SOFTAP
-			/* Customer wants to send basic client information
+			/* XXX: Customer wants to send basic client information
 			 * to the framework even if DHD cannot get the sta_info.
 			 */
 			goto get_bigdata;
@@ -3647,7 +3588,7 @@ wl_cfg80211_get_sta_info(struct net_device *dev, char* command, int total_len)
 				dtoh16(sta->ver)));
 
 #ifdef BIGDATA_SOFTAP
-			/* Customer wants to send basic client information
+			/* XXX: Customer wants to send basic client information
 			 * to the framework even if DHD cannot get the sta_info.
 			 */
 			goto get_bigdata;
@@ -5896,11 +5837,9 @@ wl_android_set_auto_channel(struct net_device *dev, const char* cmd_str,
 	/* If AP is started on wlan0 iface,
 	 * do not issue any iovar to fw and choose default ACS channel for softap
 	 */
-	if (dev == bcmcfg_to_prmry_ndev(cfg)) {
-		if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) {
-			WL_INFORM_MEM(("Softap started on primary iface\n"));
-			goto done;
-		}
+	if (wl_get_mode_by_netdev(cfg, dev) == WL_MODE_AP) {
+		WL_INFORM_MEM(("Softap started on primary iface\n"));
+		goto done;
 	}
 
 	ret = wldev_ioctl_get(dev, WLC_GET_SPECT_MANAGMENT, &spect, sizeof(spect));
@@ -6037,7 +5976,7 @@ wl_android_set_roam_vsie_enab(struct net_device *dev, const char *cmd, u32 cmd_l
 {
 	s32 err = BCME_OK;
 	u32 roam_vsie_enable = 0;
-	u32 cmd_str_len = (u32)strlen(CMD_ROAM_VSIE_ENAB_SET);
+	u32 cmd_str_len = strlen(CMD_ROAM_VSIE_ENAB_SET);
 	struct bcm_cfg80211 *cfg = wl_get_cfg(dev);
 
 	/* <CMD><SPACE><VAL> */
@@ -6988,7 +6927,7 @@ wl_android_iolist_add(struct net_device *dev, struct list_head *head, struct io_
 		resume_cfg->len = config->len;
 	}
 
-	/* assuming only one active user and no list protection */
+	/* XXX: assuming only one active user and no list protection */
 	list_add(&resume_cfg->list, head);
 
 	return 0;
@@ -7053,7 +6992,7 @@ wl_android_set_miracast(struct net_device *dev, char *command)
 		/* setting mchan_algo to platform specific value */
 		config.iovar = "mchan_algo";
 
-		/* check for station's beacon interval(BI)
+		/* XXX check for station's beacon interval(BI)
 		 * If BI is over 100ms, don't use mchan_algo
 		 */
 		ret = wldev_ioctl_get(dev, WLC_GET_BCNPRD, &val, sizeof(int));
@@ -7715,7 +7654,7 @@ static int wl_android_get_link_status(struct net_device *dev, char *command,
 		return -1;
 	}
 
-	/* referred wl_nrate_print() for the calculation */
+	/* XXX:referred wl_nrate_print() for the calculation */
 	encode = (rspec & WL_RSPEC_ENCODING_MASK);
 	txexp = (rspec & WL_RSPEC_TXEXP_MASK) >> WL_RSPEC_TXEXP_SHIFT;
 
@@ -7748,7 +7687,7 @@ static int wl_android_get_link_status(struct net_device *dev, char *command,
 		result |= WL_ANDROID_LINK_AP_MIMO_SUPPORT;
 	}
 
-	/* Legacy rates WL_RSPEC_ENCODE_RATE are single stream, and
+	/* XXX:Legacy rates WL_RSPEC_ENCODE_RATE are single stream, and
 	 * HT rates for mcs 0-7 are single stream.
 	 * In case of VHT NSS comes from rspec.
 	 */
@@ -8976,59 +8915,6 @@ wl_android_pktlog_dbg_dump(struct net_device *dev, char *command, int total_len)
 }
 #endif /* DHD_PKT_LOGGING */
 
-#if defined(CONFIG_TIZEN)
-static int wl_android_set_powersave_mode(
-	struct net_device *dev, char* command, int total_len)
-{
-	int pm;
-
-	int err = BCME_OK;
-#ifdef DHD_PM_OVERRIDE
-	extern bool g_pm_override;
-#endif /* DHD_PM_OVERRIDE */
-	sscanf(command, "%*s %10d", &pm);
-	if (pm < PM_OFF || pm > PM_FAST) {
-		WL_ERR(("check pm=%d\n", pm));
-		return BCME_ERROR;
-	}
-
-#ifdef DHD_PM_OVERRIDE
-	if (pm > PM_OFF) {
-		g_pm_override = FALSE;
-	}
-#endif /* DHD_PM_OVERRIDE */
-
-	err =  wldev_ioctl_set(dev, WLC_SET_PM, &pm, sizeof(pm));
-
-#ifdef DHD_PM_OVERRIDE
-	if (pm == PM_OFF) {
-		g_pm_override = TRUE;
-	}
-
-	WL_ERR(("%s: PM:%d, pm_override=%d\n", __FUNCTION__, pm, g_pm_override));
-#endif /* DHD_PM_OVERRIDE */
-	return err;
-}
-
-static int wl_android_get_powersave_mode(
-	struct net_device *dev, char *command, int total_len)
-{
-	int err, bytes_written;
-	int pm;
-
-	err = wldev_ioctl_get(dev, WLC_GET_PM, &pm, sizeof(pm));
-	if (err != BCME_OK) {
-		WL_ERR(("failed to get pm (%d)", err));
-		return err;
-	}
-
-	bytes_written = snprintf(command, total_len, "%s %d",
-		CMD_POWERSAVEMODE_GET, pm);
-
-	return bytes_written;
-}
-#endif /* CONFIG_TIZEN */
-
 #ifdef DHD_EVENT_LOG_FILTER
 uint32 dhd_event_log_filter_serialize(dhd_pub_t *dhdp, char *buf, uint32 tot_len, int type);
 
@@ -9712,6 +9598,7 @@ exit:
 #ifdef SUPPORT_LATENCY_CRITICAL_DATA
 #define DISABLE_LATENCY_CRT_DATA	0
 #define ENABLE_LATENCY_CRT_DATA		1
+
 static int
 wl_android_set_latency_crt_data(struct net_device *dev, int enable)
 {
@@ -10426,7 +10313,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = wl_cfg80211_set_p2p_ecsa(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
-	/* This command is not for normal VSDB operation but for only specific P2P operation.
+	/* XXX This command is not for normal VSDB operation but for only specific P2P operation.
 	 * Ex) P2P OTA backup operation
 	 */
 	else if (strnicmp(command, CMD_P2P_INC_BW, strlen(CMD_P2P_INC_BW)) == 0) {
@@ -10844,18 +10731,6 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
 		bytes_written = dhd_statlog_query(dhdp, command, priv_cmd.total_len);
 	}
 #endif /* DHD_STATUS_LOGGING */
-#if defined(CONFIG_TIZEN)
-	else if (strnicmp(command, CMD_POWERSAVEMODE_SET,
-			strlen(CMD_POWERSAVEMODE_SET)) == 0) {
-		bytes_written = wl_android_set_powersave_mode(net, command,
-			priv_cmd.total_len);
-	}
-	else if (strnicmp(command, CMD_POWERSAVEMODE_GET,
-			strlen(CMD_POWERSAVEMODE_GET)) == 0) {
-		bytes_written = wl_android_get_powersave_mode(net, command,
-			priv_cmd.total_len);
-	}
-#endif /* CONFIG_TIZEN */
 #ifdef SET_PCIE_IRQ_CPU_CORE
 	else if (strnicmp(command, CMD_PCIE_IRQ_CORE, strlen(CMD_PCIE_IRQ_CORE)) == 0) {
 		int affinity_cmd = *(command + strlen(CMD_PCIE_IRQ_CORE) + 1) - '0';
@@ -11063,7 +10938,7 @@ int wl_android_init(void)
 	}
 
 #ifdef CUSTOMER_HW4_DEBUG
-	/* No Kernel Panic from ASSERT() on customer platform. */
+	/* XXX : No Kernel Panic from ASSERT() on customer platform. */
 	g_assert_type = 1;
 #endif /* CUSTOMER_HW4_DEBUG */
 
@@ -11165,7 +11040,7 @@ static int wl_genl_deinit(void)
 
 s32 wl_event_to_bcm_event(u16 event_type)
 {
-	/* When you add any new event, please mention the
+	/* XXX When you add any new event, please mention the
 	 * version of BCM supplicant supporting it
 	 */
 	u16 event = -1;
@@ -11700,9 +11575,6 @@ wl_cfg80211_wbtext_set_default(struct net_device *ndev)
 		}
 	}
 
-	/* wbtext code for backward compatibility. Newer firmwares set default value
-	* from fw init
-	*/
 	/* set RSSI weight */
 	memset_s(commandp, WLC_IOCTL_SMLEN, 0, WLC_IOCTL_SMLEN);
 	snprintf(commandp, WLC_IOCTL_SMLEN, "%s %s",
@@ -12089,7 +11961,13 @@ int wl_cfg80211_wbtext_weight_config(struct net_device *ndev, char *data,
 		goto exit;
 	}
 
-	if (BCME_BADBAND == wl_android_bandstr_to_fwband(band, &bwcfg->band)) {
+	if (!strcasecmp(band, "a"))
+		bwcfg->band = WLC_BAND_5G;
+	else if (!strcasecmp(band, "b"))
+		bwcfg->band = WLC_BAND_2G;
+	else if (!strcasecmp(band, "all"))
+		bwcfg->band = WLC_BAND_ALL;
+	else {
 		WL_ERR(("%s: Command usage error\n", __func__));
 		goto exit;
 	}
@@ -12110,7 +11988,7 @@ int wl_cfg80211_wbtext_weight_config(struct net_device *ndev, char *data,
 		bytes_written = snprintf(command, total_len, "%s %s weight = %d\n",
 			(bwcfg->type == WNM_BSS_SELECT_TYPE_RSSI) ? "RSSI" :
 			(bwcfg->type == WNM_BSS_SELECT_TYPE_CU) ? "CU": "ESTM_DL",
-			wl_android_get_band_str(bwcfg->band), bwcfg->weight);
+			(bwcfg->band == WLC_BAND_2G) ? "2G" : "5G", bwcfg->weight);
 		err = bytes_written;
 		goto exit;
 	} else {
@@ -12176,7 +12054,16 @@ int wl_cfg80211_wbtext_table_config(struct net_device *ndev, char *data,
 		goto exit;
 	}
 
-	if (BCME_BADBAND == wl_android_bandstr_to_fwband(band, &btcfg->band)) {
+	if (!strcasecmp(band, "a")) {
+		btcfg->band = WLC_BAND_5G;
+	}
+	else if (!strcasecmp(band, "b")) {
+		btcfg->band = WLC_BAND_2G;
+	}
+	else if (!strcasecmp(band, "all")) {
+		btcfg->band = WLC_BAND_ALL;
+	}
+	else {
 		WL_ERR(("%s: Command usage, Wrong band\n", __func__));
 		goto exit;
 	}
@@ -12263,7 +12150,11 @@ wl_cfg80211_wbtext_delta_config(struct net_device *ndev, char *data, char *comma
 	}
 
 	argc = sscanf(data, "%"S(BUFSZ)"s %"S(BUFSZ)"s", band, delta);
-	if (BCME_BADBAND == wl_android_bandstr_to_fwband(band, &band_val)) {
+	if (!strcasecmp(band, "a"))
+		band_val = WLC_BAND_5G;
+	else if (!strcasecmp(band, "b"))
+		band_val = WLC_BAND_2G;
+	else {
 		WL_ERR(("%s: Missing band\n", __func__));
 		goto exit;
 	}
@@ -12317,7 +12208,7 @@ wl_cfg80211_wbtext_delta_config(struct net_device *ndev, char *data, char *comma
 	else {
 		if (rp->v2.roam_prof[0].channel_usage != 0) {
 			bytes_written = snprintf(command, total_len,
-				"%s Delta %d\n", wl_android_get_band_str(rp->v1.band),
+				"%s Delta %d\n", (rp->v1.band == WLC_BAND_2G) ? "2G" : "5G",
 				rp->v2.roam_prof[0].roam_delta);
 		}
 		err = bytes_written;

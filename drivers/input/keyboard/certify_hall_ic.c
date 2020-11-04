@@ -195,8 +195,6 @@ static int certify_hall_probe(struct platform_device *pdev)
 	int error;
 	int wakeup = 0;
 
-	pr_info("%s start\n", __func__);
-
 	ddata = kzalloc(sizeof(struct certify_hall_drvdata), GFP_KERNEL);
 	if (!ddata)
 		return -ENOMEM;

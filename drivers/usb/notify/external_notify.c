@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2019 Samsung Electronics Co. Ltd.
  *
@@ -8,7 +7,7 @@
  * (at your option) any later version.
  */
 
- /* usb notify layer v3.4 */
+ /* usb notify layer v3.3 */
 
 #define pr_fmt(fmt) "usb_notify: " fmt
 

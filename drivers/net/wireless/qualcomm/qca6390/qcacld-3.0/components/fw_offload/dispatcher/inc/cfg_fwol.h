@@ -29,7 +29,6 @@
 #include "cfg_neighbor_roam.h"
 #include "cfg_adaptive_dwelltime.h"
 
-#ifdef WLAN_FW_OFFLOAD
 #define CFG_FWOL_ALL \
 	CFG_ADAPTIVE_DWELLTIME_ALL \
 	CFG_11K_ALL \
@@ -37,9 +36,6 @@
 	CFG_FWOL_GENERIC_ALL \
 	CFG_IE_WHITELIST \
 	CFG_THERMAL_TEMP_ALL
-#else
-#define CFG_FWOL_ALL
-#endif
 
 #endif /* __CFG_FWOL_H */
 

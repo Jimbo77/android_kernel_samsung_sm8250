@@ -251,10 +251,7 @@ int dd_add_master_key(int userid, void *key, int len) {
 	struct dd_master_key *mk = NULL;
 	struct list_head *entry;
 
-	if (len != sizeof(struct fscrypt_key)) {
-		dd_error("failed to add master key: len error");
-		return -EINVAL;
-	}
+	BUG_ON(len != sizeof(struct fscrypt_key));
 
 	list_for_each(entry, &dd_master_key_head) {
 		struct dd_master_key *k = list_entry(entry, struct dd_master_key, list);
@@ -274,12 +271,6 @@ int dd_add_master_key(int userid, void *key, int len) {
 	mk->userid = userid;
 
 	memcpy(&mk->key, key, sizeof(struct fscrypt_key));
-	if (mk->key.size > FS_MAX_KEY_SIZE) {
-		//handle wrong size
-		dd_error("failed to add master key: size error");
-		kzfree(mk);
-		return -EINVAL;
-	}
 	spin_lock(&dd_master_key_lock);
 	list_add_tail(&mk->list, &dd_master_key_head);
 	spin_unlock(&dd_master_key_lock);

@@ -61,9 +61,9 @@ struct cvd_version_table cvd_version_table_mapping[CVD_INT_VERSION_MAX] = {
 static struct common_data common;
 static bool module_initialized;
 
-#ifdef CONFIG_DSP_SLEEP_RECOVERY
+#ifdef ADSP_SLEEP_DEBUG
 bool voice_activated = false;
-#endif /* CONFIG_DSP_SLEEP_RECOVERY */
+#endif /* ADSP_SLEEP_DEBUG */
 
 
 static int voice_send_enable_vocproc_cmd(struct voice_data *v);
@@ -1290,6 +1290,7 @@ static int voice_unmap_cal_block(struct voice_data *v, int cal_index)
 		goto unlock;
 	}
 
+	mutex_lock(&common.common_lock);
 	result = voice_send_mvm_unmap_memory_physical_cmd(
 		v, cal_block->map_data.q6map_handle);
 	if (result)
@@ -1297,6 +1298,7 @@ static int voice_unmap_cal_block(struct voice_data *v, int cal_index)
 			__func__, v->session_id, result);
 
 	cal_block->map_data.q6map_handle = 0;
+	mutex_unlock(&common.common_lock);
 unlock:
 	mutex_unlock(&common.cal_data[cal_index]->lock);
 done:
@@ -7019,9 +7021,9 @@ int voc_end_voice_call(uint32_t session_id)
 		}
 
 		v->voc_state = VOC_RELEASE;
-#ifdef CONFIG_DSP_SLEEP_RECOVERY
+#ifdef ADSP_SLEEP_DEBUG
 		voice_activated = false;
-#endif /* CONFIG_DSP_SLEEP_RECOVERY */
+#endif /* ADSP_SLEEP_DEBUG */
 	} else {
 		pr_err("%s: Error: End voice called in state %d\n",
 			__func__, v->voc_state);
@@ -7229,9 +7231,9 @@ int voc_enable_device(uint32_t session_id)
 			goto done;
 		}
 		v->voc_state = VOC_RUN;
-#ifdef CONFIG_DSP_SLEEP_RECOVERY
+#ifdef ADSP_SLEEP_DEBUG
 		voice_activated = true;
-#endif /* CONFIG_DSP_SLEEP_RECOVERY */
+#endif /* ADSP_SLEEP_DEBUG */
 	} else {
 		pr_debug("%s: called in voc state=%d, No_OP\n",
 			 __func__, v->voc_state);
@@ -7307,9 +7309,9 @@ int voc_resume_voice_call(uint32_t session_id)
 		goto fail;
 	}
 	v->voc_state = VOC_RUN;
-#ifdef CONFIG_DSP_SLEEP_RECOVERY
+#ifdef ADSP_SLEEP_DEBUG
 	voice_activated = true;
-#endif /* CONFIG_DSP_SLEEP_RECOVERY */
+#endif /* ADSP_SLEEP_DEBUG */
 
 	return 0;
 fail:
@@ -7433,9 +7435,9 @@ int voc_start_voice_call(uint32_t session_id)
 #endif /* CONFIG_SEC_SND_ADAPTATION */
 
 		v->voc_state = VOC_RUN;
-#ifdef CONFIG_DSP_SLEEP_RECOVERY
+#ifdef ADSP_SLEEP_DEBUG
 		voice_activated = true;
-#endif /* CONFIG_DSP_SLEEP_RECOVERY */
+#endif /* ADSP_SLEEP_DEBUG */
 	} else {
 		pr_err("%s: Error: Start voice called in state %d\n",
 			__func__, v->voc_state);

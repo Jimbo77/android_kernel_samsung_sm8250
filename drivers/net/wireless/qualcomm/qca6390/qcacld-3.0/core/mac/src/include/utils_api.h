@@ -23,7 +23,6 @@
 #include <sir_common.h>
 #include "ani_global.h"
 #include "sys_wrapper.h"
-#include "wlan_vdev_mlme_main.h"
 #include "wlan_vdev_mlme_api.h"
 
 /**

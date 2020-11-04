@@ -3165,11 +3165,6 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data,
 		pr_debug("Do not unload tz_iccc app from tz\n");
 		goto unload_exit;
 	}
-	
-	if (!memcmp(data->client.app_name, "tz_hdm", strlen("tz_hdm"))) {
-		pr_debug("Do not unload tz_hdm app from tz\n");
-		goto unload_exit;
-	}
 
 	__qseecom_cleanup_app(data);
 	__qseecom_reentrancy_check_if_no_app_blocked(TZ_OS_APP_SHUTDOWN_ID);
@@ -3210,7 +3205,7 @@ static int qseecom_unload_app(struct qseecom_dev_handle *data,
 			pr_warn("unload ta %d(%s) EBUSY\n",
 				data->client.app_id, data->client.app_name);
 			ptr_app->ref_cnt++;
-			return ret;
+			goto exit;
 		}
 		spin_lock_irqsave(&qseecom.registered_app_list_lock, flags);
 		list_del(&ptr_app->list);
@@ -3230,6 +3225,7 @@ unload_exit:
 #ifdef CONFIG_QSEECOM_DEBUG
 	qseecom_update_info(ret);
 #endif
+exit:
 	return ret;
 }
 

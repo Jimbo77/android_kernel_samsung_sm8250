@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -116,13 +116,13 @@
  * <ini>
  * gEnableDynamicDTIM - Enable Dynamic DTIM
  * @Min: 0
- * @Max: 10
+ * @Max: 9
  * @Default: 0
  *
  * This ini is used to enable/disable dynamic DTIM.
  *
  * 0 - Disable Dynamic DTIM
- * 1 to 10 - SLM will switch to DTIM specified here when host suspends and
+ * 1 to 5 - SLM will switch to DTIM specified here when host suspends and
  *          switch DTIM1 when host resumes
  *
  * Usage: External
@@ -132,7 +132,7 @@
 #define CFG_PMO_ENABLE_DYNAMIC_DTIM CFG_INI_UINT( \
 	"gEnableDynamicDTIM", \
 	0, \
-	10, \
+	9, \
 	0, \
 	CFG_VALUE_OR_DEFAULT, \
 	"Enable Dynamic DTIM")
@@ -193,31 +193,35 @@
 
 /*
  * <ini>
- * gOptimizedPowerManagement - Optimized Power Management
+ * gEnablePowerSaveOffload - Enable Power Save Offload
  * @Min: 0
- * @Max: 1
- * @Default: 1
+ * @Max: 5
+ * @Default: 0
  *
- * This ini is used to set Optimized Power Management configuration:
- * Current values of gOptimizedPowerManagement:
- * 0 -> Disable optimized power management
- * 1 -> Enable optimized power management
+ * This ini is used to set Power Save Offload configuration:
+ * Current values of gEnablePowerSaveOffload:
+ * 0 -> Power save offload is disabled
+ * 1 -> Legacy Power save enabled + Deep sleep Disabled
+ * 2 -> QPower enabled + Deep sleep Disabled
+ * 3 -> Legacy Power save enabled + Deep sleep Enabled
+ * 4 -> QPower enabled + Deep sleep Enabled
+ * 5 -> Duty cycling QPower enabled
  *
  * Related: None
  *
- * Supported Feature: Optimized Power Management
+ * Supported Feature: Power Save
  *
  * Usage: External
  *
  * </ini>
  */
-#define CFG_PMO_POWERSAVE_MODE CFG_INI_UINT( \
-	"gOptimizedPowerManagement", \
+#define CFG_PMO_POWERSAVE_OFFLOAD CFG_INI_UINT( \
+	"gEnablePowerSaveOffload", \
 	0, \
-	1, \
-	1, \
+	5, \
+	0, \
 	CFG_VALUE_OR_DEFAULT, \
-	"Optimized Power Management")
+	"Enable Power Save Offload")
 
 /*
  * <ini>
@@ -425,7 +429,7 @@
 	CFG(CFG_PMO_ENABLE_DYNAMIC_DTIM) \
 	CFG(CFG_PMO_ENABLE_MODULATED_DTIM) \
 	CFG(CFG_PMO_MC_ADDR_LIST_ENABLE) \
-	CFG(CFG_PMO_POWERSAVE_MODE) \
+	CFG(CFG_PMO_POWERSAVE_OFFLOAD) \
 	CFG(CFG_PMO_MAX_PS_POLL) \
 	CFG(CFG_PMO_WOWLAN_DEAUTH_ENABLE) \
 	CFG(CFG_PMO_WOWLAN_DISASSOC_ENABLE) \

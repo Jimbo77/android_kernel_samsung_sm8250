@@ -43,14 +43,11 @@ struct ndi_find_vdev_filter {
  * @psoc: pointer to psoc object
  * @data: request data. contains vendor cmd tlvs
  * @data_len: length of data
- * @is_ndp_allowed: Indicates whether to allow NDP creation.
- *		    NDI creation is always allowed.
  *
  * Return: status of operation
  */
 int os_if_nan_process_ndp_cmd(struct wlan_objmgr_psoc *psoc,
-			      const void *data, int data_len,
-			      bool is_ndp_allowed);
+				const void *data, int data_len);
 
 /**
  * os_if_nan_register_hdd_callbacks: os_if api to register hdd callbacks
@@ -145,6 +142,18 @@ static inline QDF_STATUS os_if_nan_set_ndp_delete_transaction_id(
 {
 	return ucfg_nan_set_ndp_delete_transaction_id(vdev, val);
 }
+
+/**
+ * os_if_nan_legacy_req: os_if api to handle NAN requests attached to the vendor
+ * command QCA_NL80211_VENDOR_SUBCMD_NAN
+ * @psoc: pointer to psoc object
+ * @data: request data. contains vendor cmd tlvs
+ * @data_len: length of data
+ *
+ * Return: status of operation
+ */
+int os_if_nan_legacy_req(struct wlan_objmgr_psoc *psoc, const void *data,
+			 int data_len);
 
 /**
  * os_if_process_nan_req: os_if api to handle NAN requests attached to the

@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef _NET_ETHERNET_H_	/* use native BSD ethernet.h when available */

@@ -86,7 +86,6 @@ struct sec_direct_charger_info {
 	bool wc_tx_enable;
 	bool now_isApdo;
 	bool hv_pdo;
-	bool store_mode;
 
 	int bat_temp;
 

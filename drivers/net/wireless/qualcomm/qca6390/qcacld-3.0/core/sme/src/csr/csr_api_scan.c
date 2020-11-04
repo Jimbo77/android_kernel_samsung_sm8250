@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -50,11 +50,9 @@
 #include "wlan_reg_services_api.h"
 #include "sch_api.h"
 #include "wlan_blm_api.h"
-#include "qdf_crypto.h"
-#include <wlan_crypto_global_api.h>
 
 static void csr_set_cfg_valid_channel_list(struct mac_context *mac,
-					   uint32_t *pchan_freq_list,
+					   uint8_t *pChannelList,
 					   uint8_t NumChannels);
 
 static void csr_save_tx_power_to_cfg(struct mac_context *mac,
@@ -67,8 +65,7 @@ static void csr_set_cfg_country_code(struct mac_context *mac,
 static void csr_purge_channel_power(struct mac_context *mac,
 				    tDblLinkList *pChannelList);
 
-static bool csr_roam_is_valid_channel(struct mac_context *mac,
-				      uint32_t ch_freq);
+static bool csr_roam_is_valid_channel(struct mac_context *mac, uint8_t channel);
 
 /* pResult is invalid calling this function. */
 void csr_free_scan_result_entry(struct mac_context *mac,
@@ -120,7 +117,7 @@ QDF_STATUS csr_scan_handle_search_for_ssid(struct mac_context *mac_ctx,
 {
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 	tScanResultHandle hBSSList = CSR_INVALID_SCANRESULT_HANDLE;
-	struct scan_filter *filter;
+	tCsrScanResultFilter *pScanFilter = NULL;
 	struct csr_roam_profile *profile;
 	struct csr_roam_session *session;
 
@@ -154,19 +151,16 @@ QDF_STATUS csr_scan_handle_search_for_ssid(struct mac_context *mac_ctx,
 		}
 		if (!profile)
 			break;
-		filter = qdf_mem_malloc(sizeof(*filter));
-		if (!filter) {
+		pScanFilter = qdf_mem_malloc(sizeof(tCsrScanResultFilter));
+		if (!pScanFilter) {
 			status = QDF_STATUS_E_NOMEM;
 			break;
 		}
-		status = csr_roam_get_scan_filter_from_profile(mac_ctx, profile,
-							       filter, false);
-		if (!QDF_IS_STATUS_SUCCESS(status)) {
-			qdf_mem_free(filter);
+		status = csr_roam_prepare_filter_from_profile(mac_ctx, profile,
+							      pScanFilter);
+		if (!QDF_IS_STATUS_SUCCESS(status))
 			break;
-		}
-		status = csr_scan_get_result(mac_ctx, filter, &hBSSList);
-		qdf_mem_free(filter);
+		status = csr_scan_get_result(mac_ctx, pScanFilter, &hBSSList);
 		if (!QDF_IS_STATUS_SUCCESS(status))
 			break;
 		if (mac_ctx->roam.roamSession[session_id].connectState ==
@@ -192,7 +186,10 @@ QDF_STATUS csr_scan_handle_search_for_ssid(struct mac_context *mac_ctx,
 				       eCSR_ROAM_ASSOCIATION_FAILURE,
 				       eCSR_ROAM_RESULT_SCAN_FOR_SSID_FAILURE);
 	}
-
+	if (pScanFilter) {
+		csr_free_scan_filter(mac_ctx, pScanFilter);
+		qdf_mem_free(pScanFilter);
+	}
 	return status;
 }
 
@@ -337,26 +334,28 @@ QDF_STATUS csr_scan_result_purge(struct mac_context *mac,
 
 /* Add the channel to the occupiedChannels array */
 static void csr_add_to_occupied_channels(struct mac_context *mac,
-					 uint32_t ch_freq,
+					 uint8_t ch,
 					 uint8_t sessionId,
 					 struct csr_channel *occupied_ch,
 					 bool is_init_list)
 {
 	QDF_STATUS status;
 	uint8_t num_occupied_ch = occupied_ch->numChannels;
-	uint32_t *occupied_ch_lst = occupied_ch->channel_freq_list;
+	uint8_t *occupied_ch_lst = occupied_ch->channelList;
 
 	if (is_init_list)
 		mac->scan.roam_candidate_count[sessionId]++;
 
 	if (csr_is_channel_present_in_list(occupied_ch_lst,
-					   num_occupied_ch, ch_freq))
+					   num_occupied_ch, ch))
 		return;
 
 	status = csr_add_to_channel_list_front(occupied_ch_lst,
-					       num_occupied_ch, ch_freq);
+					       num_occupied_ch, ch);
 	if (QDF_IS_STATUS_SUCCESS(status)) {
 		occupied_ch->numChannels++;
+		sme_debug("Added channel %d to the list (count=%d)",
+			ch, occupied_ch->numChannels);
 		if (occupied_ch->numChannels >
 		    CSR_BG_SCAN_OCCUPIED_CHANNEL_LIST_LEN)
 			occupied_ch->numChannels =
@@ -388,7 +387,7 @@ static void csr_scan_add_result(struct mac_context *mac_ctx,
 		frm_type = MGMT_PROBE_RESP;
 
 	rx_param.pdev_id = 0;
-	rx_param.chan_freq = bss_desc->chan_freq;
+	rx_param.channel = bss_desc->channelId;
 	rx_param.rssi = bss_desc->rssi;
 	rx_param.tsf_delta = bss_desc->tsf_delta;
 
@@ -479,7 +478,6 @@ static void csr_purge_channel_power(struct mac_context *mac,
 	 * Remove the channel sets from the learned list and put them
 	 * in the free list
 	 */
-	csr_ll_lock(pChannelList);
 	while ((pEntry = csr_ll_remove_head(pChannelList,
 					    LL_ACCESS_NOLOCK)) != NULL) {
 		pChannelSet = GET_BASE_ADDR(pEntry,
@@ -487,7 +485,6 @@ static void csr_purge_channel_power(struct mac_context *mac,
 		if (pChannelSet)
 			qdf_mem_free(pChannelSet);
 	}
-	csr_ll_unlock(pChannelList);
 }
 
 /*
@@ -513,25 +510,27 @@ QDF_STATUS csr_save_to_channel_power2_g_5_g(struct mac_context *mac,
 			pChannelInfo++;
 			continue;
 		}
-		pChannelSet->first_chan_freq = pChannelInfo->first_freq;
+		pChannelSet->firstChannel = pChannelInfo->firstChanNum;
 		pChannelSet->numChannels = pChannelInfo->numChannels;
 		/*
 		 * Now set the inter-channel offset based on the frequency band
 		 * the channel set lies in
 		 */
-		if (WLAN_REG_IS_24GHZ_CH_FREQ(pChannelSet->first_chan_freq) &&
-		    (pChannelSet->first_chan_freq + 5 * (pChannelSet->numChannels - 1) <=
-		     WLAN_REG_MAX_24GHZ_CHAN_FREQ)) {
-			pChannelSet->interChannelOffset = 5;
+		if ((WLAN_REG_IS_24GHZ_CH(pChannelSet->firstChannel)) &&
+		    ((pChannelSet->firstChannel +
+		      (pChannelSet->numChannels - 1)) <=
+		     WLAN_REG_MAX_24GHZ_CH_NUM)) {
+			pChannelSet->interChannelOffset = 1;
 			f2GHzInfoFound = true;
-		} else if (WLAN_REG_IS_5GHZ_CH_FREQ(pChannelSet->first_chan_freq) &&
-			   (pChannelSet->first_chan_freq + 20 * (pChannelSet->numChannels - 1) <=
-			   WLAN_REG_MAX_5GHZ_CHAN_FREQ)) {
-			pChannelSet->interChannelOffset = 20;
+		} else if ((WLAN_REG_IS_5GHZ_CH(pChannelSet->firstChannel))
+		    && ((pChannelSet->firstChannel +
+		      ((pChannelSet->numChannels - 1) * 4)) <=
+		     WLAN_REG_MAX_5GHZ_CH_NUM)) {
+			pChannelSet->interChannelOffset = 4;
 			f2GHzInfoFound = false;
 		} else {
-			sme_warn("Invalid Channel freq %d Present in Country IE",
-				 pChannelSet->first_chan_freq);
+			sme_warn("Invalid Channel %d Present in Country IE",
+				pChannelSet->firstChannel);
 			qdf_mem_free(pChannelSet);
 			return QDF_STATUS_E_FAILURE;
 		}
@@ -553,8 +552,8 @@ QDF_STATUS csr_save_to_channel_power2_g_5_g(struct mac_context *mac,
 						   LL_ACCESS_LOCK);
 			} else {
 				sme_debug(
-					"Adding 11B/G ch in 11A. 1st ch freq %d",
-					pChannelSet->first_chan_freq);
+					"Adding 11B/G ch in 11A. 1st ch %d",
+					pChannelSet->firstChannel);
 				qdf_mem_free(pChannelSet);
 			}
 		} else {
@@ -574,8 +573,8 @@ QDF_STATUS csr_save_to_channel_power2_g_5_g(struct mac_context *mac,
 						   LL_ACCESS_LOCK);
 			} else {
 				sme_debug(
-					"Adding 11A ch in B/G. 1st ch freq %d",
-					pChannelSet->first_chan_freq);
+					"Adding 11A ch in B/G. 1st ch %d",
+					pChannelSet->firstChannel);
 				qdf_mem_free(pChannelSet);
 			}
 		}
@@ -606,13 +605,13 @@ void csr_apply_channel_power_info_to_fw(struct mac_context *mac_ctx,
 		tempNumChannels = QDF_MIN(ch_lst->numChannels,
 					  CFG_VALID_CHANNEL_LIST_LEN);
 		for (i = 0; i < tempNumChannels; i++) {
-			tmp_ch_lst.channel_freq_list[num_ch] = ch_lst->channel_freq_list[i];
+			tmp_ch_lst.channelList[num_ch] = ch_lst->channelList[i];
 			num_ch++;
 		}
 		tmp_ch_lst.numChannels = num_ch;
 		/* Store the channel+power info in the global place: Cfg */
 		csr_apply_power2_current(mac_ctx);
-		csr_set_cfg_valid_channel_list(mac_ctx, tmp_ch_lst.channel_freq_list,
+		csr_set_cfg_valid_channel_list(mac_ctx, tmp_ch_lst.channelList,
 					       tmp_ch_lst.numChannels);
 	} else {
 		sme_err("11D channel list is empty");
@@ -636,11 +635,12 @@ static void csr_diag_reset_country_information(struct mac_context *mac)
 	qdf_mem_copy(p11dLog->countryCode, mac->scan.countryCodeCurrent, 3);
 	p11dLog->numChannel = mac->scan.base_channels.numChannels;
 	if (p11dLog->numChannel <= HOST_LOG_MAX_NUM_CHANNEL) {
+		qdf_mem_copy(p11dLog->Channels,
+			     mac->scan.base_channels.channelList,
+			     p11dLog->numChannel);
 		for (Index = 0;
 		     Index < mac->scan.base_channels.numChannels;
 		     Index++) {
-			p11dLog->Channels[Index] =
-				wlan_reg_freq_to_chan(mac->pdev, mac->scan.base_channels.channel_freq_list[Index]);
 			p11dLog->TxPwr[Index] = QDF_MIN(
 				mac->scan.defaultPowerTable[Index].tx_power,
 				mac->mlme_cfg->power.max_tx_power);
@@ -693,23 +693,19 @@ static void csr_get_channel_power_info(struct mac_context *mac,
 	struct csr_channel_powerinfo *ch_set;
 
 	/* Get 2.4Ghz first */
-	csr_ll_lock(list);
-	entry = csr_ll_peek_head(list, LL_ACCESS_NOLOCK);
+	entry = csr_ll_peek_head(list, LL_ACCESS_LOCK);
 	while (entry && (chn_idx < *num_ch)) {
 		ch_set = GET_BASE_ADDR(entry,
 				struct csr_channel_powerinfo, link);
 		for (idx = 0; (idx < ch_set->numChannels)
 				&& (chn_idx < *num_ch); idx++) {
 			chn_pwr_info[chn_idx].chan_num =
-				(uint8_t)wlan_reg_freq_to_chan(
-					mac->pdev,
-					ch_set->first_chan_freq +
-					idx * ch_set->interChannelOffset);
+				(uint8_t) (ch_set->firstChannel
+				 + (idx * ch_set->interChannelOffset));
 			chn_pwr_info[chn_idx++].tx_power = ch_set->txPower;
 		}
-		entry = csr_ll_next(list, entry, LL_ACCESS_NOLOCK);
+		entry = csr_ll_next(list, entry, LL_ACCESS_LOCK);
 	}
-	csr_ll_unlock(list);
 	*num_ch = chn_idx;
 }
 
@@ -718,7 +714,6 @@ static void csr_diag_apply_country_info(struct mac_context *mac_ctx)
 	host_log_802_11d_pkt_type *p11dLog;
 	struct channel_power chnPwrInfo[CFG_VALID_CHANNEL_LIST_LEN];
 	uint32_t nChnInfo = CFG_VALID_CHANNEL_LIST_LEN, nTmp;
-	uint8_t i;
 
 	WLAN_HOST_DIAG_LOG_ALLOC(p11dLog, host_log_802_11d_pkt_type,
 				 LOG_WLAN_80211D_C);
@@ -731,10 +726,9 @@ static void csr_diag_apply_country_info(struct mac_context *mac_ctx)
 	if (p11dLog->numChannel > HOST_LOG_MAX_NUM_CHANNEL)
 		goto diag_end;
 
-	for (i = 0; i < p11dLog->numChannel; i++)
-		p11dLog->Channels[i] =
-		wlan_reg_freq_to_chan(mac_ctx->pdev,
-				      mac_ctx->scan.channels11d.channel_freq_list[i]);
+	qdf_mem_copy(p11dLog->Channels,
+		     mac_ctx->scan.channels11d.channelList,
+		     p11dLog->numChannel);
 	csr_get_channel_power_info(mac_ctx,
 				&mac_ctx->scan.channelPowerInfoList24,
 				&nChnInfo, chnPwrInfo);
@@ -809,7 +803,7 @@ void csr_save_channel_power_for_band(struct mac_context *mac, bool fill_5f)
 	tSirMacChanInfo *ch_info_start;
 	int32_t max_ch_idx;
 	bool tmp_bool;
-	uint32_t ch_freq = 0;
+	uint8_t ch = 0;
 
 	max_ch_idx =
 		(mac->scan.base_channels.numChannels <
@@ -824,9 +818,9 @@ void csr_save_channel_power_for_band(struct mac_context *mac, bool fill_5f)
 
 	ch_info_start = chan_info;
 	for (idx = 0; idx < max_ch_idx; idx++) {
-		ch_freq = mac->scan.defaultPowerTable[idx].center_freq;
-		tmp_bool = (fill_5f && WLAN_REG_IS_5GHZ_CH_FREQ(ch_freq)) ||
-			(!fill_5f && WLAN_REG_IS_24GHZ_CH_FREQ(ch_freq));
+		ch = mac->scan.defaultPowerTable[idx].chan_num;
+		tmp_bool = (fill_5f && WLAN_REG_IS_5GHZ_CH(ch)) ||
+			(!fill_5f && WLAN_REG_IS_24GHZ_CH(ch));
 		if (!tmp_bool)
 			continue;
 
@@ -835,8 +829,8 @@ void csr_save_channel_power_for_band(struct mac_context *mac, bool fill_5f)
 			break;
 		}
 
-		chan_info->first_freq =
-			mac->scan.defaultPowerTable[idx].center_freq;
+		chan_info->firstChanNum =
+			mac->scan.defaultPowerTable[idx].chan_num;
 		chan_info->numChannels = 1;
 		chan_info->maxTxPower =
 			QDF_MIN(mac->scan.defaultPowerTable[idx].tx_power,
@@ -851,13 +845,14 @@ void csr_save_channel_power_for_band(struct mac_context *mac, bool fill_5f)
 	qdf_mem_free(ch_info_start);
 }
 
-bool csr_is_supported_channel(struct mac_context *mac, uint32_t chan_freq)
+bool csr_is_supported_channel(struct mac_context *mac, uint8_t channelId)
 {
 	bool fRet = false;
 	uint32_t i;
 
 	for (i = 0; i < mac->scan.base_channels.numChannels; i++) {
-		if (chan_freq == mac->scan.base_channels.channel_freq_list[i]) {
+		if (channelId ==
+		    mac->scan.base_channels.channelList[i]) {
 			fRet = true;
 			break;
 		}
@@ -941,10 +936,10 @@ static enum csr_scancomplete_nextcommand
 csr_scan_get_next_command_state(struct mac_context *mac_ctx,
 				uint32_t session_id,
 				eCsrScanStatus scan_status,
-				uint32_t *chan_freq)
+				uint8_t *chan)
 {
 	enum csr_scancomplete_nextcommand NextCommand = eCsrNextScanNothing;
-	uint32_t chan_freq_ret;
+	int8_t channel;
 	struct csr_roam_session *session;
 
 	if (!CSR_IS_SESSION_VALID(mac_ctx, session_id)) {
@@ -955,17 +950,17 @@ csr_scan_get_next_command_state(struct mac_context *mac_ctx,
 	switch (session->scan_info.scan_reason) {
 	case eCsrScanForSsid:
 		sme_debug("Resp for Scan For Ssid");
-		chan_freq_ret = csr_scan_get_channel_for_hw_mode_change(
+		channel = csr_scan_get_channel_for_hw_mode_change(
 				mac_ctx,
 				session_id,
 				session->scan_info.profile);
-		if ((!chan_freq_ret) && scan_status) {
+		if ((!channel) || scan_status) {
 			NextCommand = eCsrNexteScanForSsidFailure;
 			sme_err("next Scan For Ssid Failure %d %d",
-				chan_freq_ret, scan_status);
+				channel, scan_status);
 		} else {
 			NextCommand = eCsrNextCheckAllowConc;
-			*chan_freq = chan_freq_ret;
+			*chan = channel;
 			sme_debug("next CheckAllowConc");
 		}
 		break;
@@ -1157,7 +1152,7 @@ error:
 static void csr_handle_nxt_cmd(struct mac_context *mac_ctx,
 			       enum csr_scancomplete_nextcommand nxt_cmd,
 			       uint32_t session_id,
-			       uint32_t chan_freq)
+			       uint8_t chan)
 {
 	QDF_STATUS status, ret;
 	struct csr_roam_session *session;
@@ -1171,11 +1166,11 @@ static void csr_handle_nxt_cmd(struct mac_context *mac_ctx,
 		csr_scan_handle_search_for_ssid_failure(mac_ctx, session_id);
 		break;
 	case eCsrNextCheckAllowConc:
-		ret = policy_mgr_current_connections_update(
-				mac_ctx->psoc, session_id, chan_freq,
-				POLICY_MGR_UPDATE_REASON_HIDDEN_STA);
-		sme_debug("channel freq: %d session: %d status: %d",
-			  chan_freq, session_id, ret);
+		ret = policy_mgr_current_connections_update(mac_ctx->psoc,
+					session_id, chan,
+					POLICY_MGR_UPDATE_REASON_HIDDEN_STA);
+		sme_debug("chan: %d session: %d status: %d",
+					chan, session_id, ret);
 
 		status = csr_save_profile(mac_ctx, session_id);
 		if (!QDF_IS_STATUS_SUCCESS(status)) {
@@ -1185,7 +1180,7 @@ static void csr_handle_nxt_cmd(struct mac_context *mac_ctx,
 		}
 
 		if (QDF_STATUS_E_FAILURE == ret) {
-			sme_debug("conn update fail %d", chan_freq);
+			sme_err("conn update fail %d", chan);
 			csr_scan_handle_search_for_ssid_failure(mac_ctx,
 								session_id);
 		} else if ((QDF_STATUS_E_NOSUPPORT == ret) ||
@@ -1214,8 +1209,7 @@ void csr_scan_callback(struct wlan_objmgr_vdev *vdev,
 	struct mac_context *mac_ctx;
 	struct csr_roam_session *session;
 	uint32_t session_id = 0;
-	uint32_t chan_freq = 0;
-	QDF_STATUS status;
+	uint8_t chan = 0;
 	bool success = false;
 
 	mac_ctx = (struct mac_context *)arg;
@@ -1230,16 +1224,10 @@ void csr_scan_callback(struct wlan_objmgr_vdev *vdev,
 		scan_status = eCSR_SCAN_SUCCESS;
 
 	session_id = wlan_vdev_get_id(vdev);
-	status = sme_acquire_global_lock(&mac_ctx->sme);
-	if (QDF_IS_STATUS_ERROR(status))
-		return;
-
 	if (!CSR_IS_SESSION_VALID(mac_ctx, session_id)) {
 		sme_err("session %d is invalid", session_id);
-		sme_release_global_lock(&mac_ctx->sme);
 		return;
 	}
-
 	session = CSR_GET_SESSION(mac_ctx, session_id);
 
 	sme_debug("Scan Completion: status %d session %d scan_id %d",
@@ -1249,7 +1237,6 @@ void csr_scan_callback(struct wlan_objmgr_vdev *vdev,
 	if (session->scan_info.scan_id != event->scan_id) {
 		sme_debug("Scan Completion on wrong scan_id %d, expected %d",
 			session->scan_info.scan_id, event->scan_id);
-		sme_release_global_lock(&mac_ctx->sme);
 		return;
 	}
 #ifdef FEATURE_WLAN_DIAG_SUPPORT_CSR
@@ -1257,12 +1244,10 @@ void csr_scan_callback(struct wlan_objmgr_vdev *vdev,
 #endif
 	NextCommand = csr_scan_get_next_command_state(mac_ctx,
 					session_id, scan_status,
-					&chan_freq);
+					&chan);
 	/* We reuse the command here instead reissue a new command */
 	csr_handle_nxt_cmd(mac_ctx, NextCommand,
-			   session_id, chan_freq);
-
-	sme_release_global_lock(&mac_ctx->sme);
+			   session_id, chan);
 }
 
 tCsrScanResultInfo *csr_scan_result_get_first(struct mac_context *mac,
@@ -1335,7 +1320,7 @@ QDF_STATUS csr_scan_for_ssid(struct mac_context *mac_ctx, uint32_t session_id,
 	uint32_t num_ssid = profile->SSIDs.numOfSSIDs;
 	struct scan_start_request *req;
 	struct wlan_objmgr_vdev *vdev;
-	uint8_t i, num_chan = 0;
+	uint8_t i, chan, num_chan = 0;
 	uint8_t pdev_id;
 	wlan_scan_id scan_id;
 	struct csr_roam_session *session = CSR_GET_SESSION(mac_ctx, session_id);
@@ -1422,9 +1407,10 @@ QDF_STATUS csr_scan_for_ssid(struct mac_context *mac_ctx, uint32_t session_id,
 	if (profile->ChannelInfo.numOfChannels) {
 		for (i = 0; i < profile->ChannelInfo.numOfChannels; i++) {
 			if (csr_roam_is_valid_channel(mac_ctx,
-				profile->ChannelInfo.freq_list[i])) {
+				profile->ChannelInfo.ChannelList[i])) {
+				chan = profile->ChannelInfo.ChannelList[i];
 				req->scan_req.chan_list.chan[num_chan].freq =
-					profile->ChannelInfo.freq_list[i];
+						wlan_chan_to_freq(chan);
 				num_chan++;
 			}
 		}
@@ -1465,21 +1451,18 @@ error:
 }
 
 static void csr_set_cfg_valid_channel_list(struct mac_context *mac,
-					   uint32_t *pchan_freq_list,
+					   uint8_t *pChannelList,
 					   uint8_t NumChannels)
 {
 	QDF_STATUS status;
-	uint8_t i;
 
 	QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
 		  "%s: dump valid channel list(NumChannels(%d))",
 		  __func__, NumChannels);
 	QDF_TRACE_HEX_DUMP(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
-			   pchan_freq_list, NumChannels);
-	for (i = 0; i < NumChannels; i++) {
-		mac->mlme_cfg->reg.valid_channel_freq_list[i] = pchan_freq_list[i];
-	}
-
+			   pChannelList, NumChannels);
+	qdf_mem_copy(mac->mlme_cfg->reg.valid_channel_list, pChannelList,
+		     NumChannels);
 	mac->mlme_cfg->reg.valid_channel_list_num = NumChannels;
 
 	QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
@@ -1517,8 +1500,7 @@ static void csr_save_tx_power_to_cfg(struct mac_context *mac,
 		return;
 
 	ch_pwr_set = (tSirMacChanInfo *)(p_buf);
-	csr_ll_lock(pList);
-	pEntry = csr_ll_peek_head(pList, LL_ACCESS_NOLOCK);
+	pEntry = csr_ll_peek_head(pList, LL_ACCESS_LOCK);
 	/*
 	 * write the tuples (startChan, numChan, txPower) for each channel found
 	 * in the channel power list.
@@ -1526,7 +1508,7 @@ static void csr_save_tx_power_to_cfg(struct mac_context *mac,
 	while (pEntry) {
 		ch_set = GET_BASE_ADDR(pEntry,
 				struct csr_channel_powerinfo, link);
-		if (ch_set->interChannelOffset != 5) {
+		if (1 != ch_set->interChannelOffset) {
 			/*
 			 * we keep the 5G channel sets internally with an
 			 * interchannel offset of 4. Expand these to the right
@@ -1541,63 +1523,65 @@ static void csr_save_tx_power_to_cfg(struct mac_context *mac,
 				 * allocation
 				 */
 				sme_err(
-					"Buffer overflow, start freq %d, num %d, offset %d",
-					ch_set->first_chan_freq,
+					"Buffer overflow, start %d, num %d, offset %d",
+					ch_set->firstChannel,
 					ch_set->numChannels,
 					ch_set->interChannelOffset);
 				break;
 			}
 
 			for (idx = 0; idx < ch_set->numChannels; idx++) {
-				ch_pwr_set->first_freq =
-					ch_set->first_chan_freq;
+				ch_pwr_set->firstChanNum = (tSirMacChanNum)
+					(ch_set->firstChannel + (idx *
+						ch_set->interChannelOffset));
+				sme_debug(
+					"Setting Channel Number %d",
+					ch_pwr_set->firstChanNum);
 				ch_pwr_set->numChannels = 1;
 				ch_pwr_set->maxTxPower =
 					QDF_MIN(ch_set->txPower,
 					mac->mlme_cfg->power.max_tx_power);
+				sme_debug(
+					"Setting Max Transmit Power %d",
+					ch_pwr_set->maxTxPower);
 				cbLen += sizeof(tSirMacChanInfo);
 				ch_pwr_set++;
 				count++;
 			}
 		} else {
-			if (cbLen + sizeof(tSirMacChanInfo) >= dataLen) {
+			if (cbLen >= dataLen) {
 				/* this entry will overflow our allocation */
 				sme_err(
-					"Buffer overflow, start freq %d, num %d, offset %d",
-					ch_set->first_chan_freq,
+					"Buffer overflow, start %d, num %d, offset %d",
+					ch_set->firstChannel,
 					ch_set->numChannels,
 					ch_set->interChannelOffset);
 				break;
 			}
-			ch_pwr_set->first_freq = ch_set->first_chan_freq;
+			ch_pwr_set->firstChanNum = ch_set->firstChannel;
+			sme_debug("Setting Channel Number %d",
+				ch_pwr_set->firstChanNum);
 			ch_pwr_set->numChannels = ch_set->numChannels;
 			ch_pwr_set->maxTxPower = QDF_MIN(ch_set->txPower,
 					mac->mlme_cfg->power.max_tx_power);
+			sme_debug(
+				"Setting Max Tx Power %d, nTxPower %d",
+				ch_pwr_set->maxTxPower,
+				mac->mlme_cfg->power.max_tx_power);
 			cbLen += sizeof(tSirMacChanInfo);
 			ch_pwr_set++;
 			count++;
 		}
-		pEntry = csr_ll_next(pList, pEntry, LL_ACCESS_NOLOCK);
+		pEntry = csr_ll_next(pList, pEntry, LL_ACCESS_LOCK);
 	}
-	csr_ll_unlock(pList);
 	if (band == BAND_2G) {
-		mac->mlme_cfg->power.max_tx_power_24.len =
-					sizeof(tSirMacChanInfo) * count;
-		if (mac->mlme_cfg->power.max_tx_power_24.len >
-						CFG_MAX_TX_POWER_2_4_LEN)
-			mac->mlme_cfg->power.max_tx_power_24.len =
-						CFG_MAX_TX_POWER_2_4_LEN;
+		mac->mlme_cfg->power.max_tx_power_24.len = 3 * count;
 		qdf_mem_copy(mac->mlme_cfg->power.max_tx_power_24.data,
 			     (uint8_t *)p_buf,
 			     mac->mlme_cfg->power.max_tx_power_24.len);
 	}
 	if (band == BAND_5G) {
-		mac->mlme_cfg->power.max_tx_power_5.len =
-					sizeof(tSirMacChanInfo) * count;
-		if (mac->mlme_cfg->power.max_tx_power_5.len >
-							CFG_MAX_TX_POWER_5_LEN)
-			mac->mlme_cfg->power.max_tx_power_5.len =
-							CFG_MAX_TX_POWER_5_LEN;
+		mac->mlme_cfg->power.max_tx_power_5.len = 3 * count;
 		qdf_mem_copy(mac->mlme_cfg->power.max_tx_power_5.data,
 			     (uint8_t *)p_buf,
 			     mac->mlme_cfg->power.max_tx_power_5.len);
@@ -1611,7 +1595,7 @@ static void csr_set_cfg_country_code(struct mac_context *mac,
 	uint8_t cc[CFG_COUNTRY_CODE_LEN];
 	/* v_REGDOMAIN_t DomainId */
 
-	sme_debug("Set Country in Cfg %s", countryCode);
+	sme_debug("Setting Country Code in Cfg %s", countryCode);
 	qdf_mem_copy(cc, countryCode, CFG_COUNTRY_CODE_LEN);
 
 	/*
@@ -1637,6 +1621,7 @@ static void csr_set_cfg_country_code(struct mac_context *mac,
 	 */
 	qdf_mem_copy(mac->mlme_cfg->reg.country_code, cc, CFG_COUNTRY_CODE_LEN);
 	mac->mlme_cfg->reg.country_code_len = CFG_COUNTRY_CODE_LEN;
+	sme_debug("CFG_COUNTRY_CODE changed");
 	sch_edca_profile_update_all(mac);
 	/*
 	 * Need to let HALPHY know about the current domain so it can apply some
@@ -1678,7 +1663,7 @@ QDF_STATUS csr_scan_abort_mac_scan(struct mac_context *mac_ctx,
 				vdev_id, WLAN_LEGACY_SME_ID);
 
 	if (!vdev) {
-		sme_debug("Failed get vdev");
+		sme_err("Failed get vdev");
 		qdf_mem_free(req);
 		return QDF_STATUS_E_INVAL;
 	}
@@ -1702,15 +1687,63 @@ QDF_STATUS csr_scan_abort_mac_scan(struct mac_context *mac_ctx,
 
 	return status;
 }
+QDF_STATUS csr_remove_nonscan_cmd_from_pending_list(struct mac_context *mac,
+						    uint8_t sessionId,
+						    eSmeCommandType commandType)
+{
+	tDblLinkList localList;
+	tListElem *pEntry;
+	tSmeCmd *pCommand;
+	tListElem *pEntryToRemove;
+	QDF_STATUS status = QDF_STATUS_E_FAILURE;
 
-bool csr_roam_is_valid_channel(struct mac_context *mac, uint32_t ch_freq)
+	qdf_mem_zero(&localList, sizeof(tDblLinkList));
+	if (!QDF_IS_STATUS_SUCCESS(csr_ll_open(&localList))) {
+		sme_err("failed to open list");
+		return status;
+	}
+
+	pEntry = csr_nonscan_pending_ll_peek_head(mac, LL_ACCESS_NOLOCK);
+
+	/*
+	 * Have to make sure we don't loop back to the head of the list,
+	 * which will happen if the entry is NOT on the list
+	 */
+	while (pEntry) {
+		pEntryToRemove = pEntry;
+		pEntry = csr_nonscan_pending_ll_next(mac,
+					pEntry, LL_ACCESS_NOLOCK);
+		pCommand = GET_BASE_ADDR(pEntryToRemove, tSmeCmd, Link);
+
+		if ((pCommand->command == commandType) &&
+		    (pCommand->sessionId == sessionId)) {
+			/* Insert to localList and remove later */
+			csr_ll_insert_tail(&localList, pEntryToRemove,
+					   LL_ACCESS_NOLOCK);
+			status = QDF_STATUS_SUCCESS;
+		}
+	}
+
+
+	while ((pEntry = csr_ll_remove_head(&localList, LL_ACCESS_NOLOCK))) {
+		pCommand = GET_BASE_ADDR(pEntry, tSmeCmd, Link);
+		sme_debug("Sending abort for command ID %d",
+			sessionId);
+		csr_release_command(mac, pCommand);
+	}
+
+	csr_ll_close(&localList);
+	return status;
+}
+
+bool csr_roam_is_valid_channel(struct mac_context *mac, uint8_t channel)
 {
 	bool fValid = false;
 	uint32_t idx_valid_ch;
 	uint32_t len = mac->roam.numValidChannels;
 
 	for (idx_valid_ch = 0; (idx_valid_ch < len); idx_valid_ch++) {
-		if (ch_freq == mac->roam.valid_ch_freq_list[idx_valid_ch]) {
+		if (channel == mac->roam.validChannelList[idx_valid_ch]) {
 			fValid = true;
 			break;
 		}
@@ -1721,7 +1754,7 @@ bool csr_roam_is_valid_channel(struct mac_context *mac, uint32_t ch_freq)
 QDF_STATUS csr_scan_create_entry_in_scan_cache(struct mac_context *mac,
 					       uint32_t sessionId,
 					       struct qdf_mac_addr bssid,
-					       uint32_t ch_freq)
+					       uint8_t channel)
 {
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct csr_roam_session *pSession = CSR_GET_SESSION(mac, sessionId);
@@ -1733,8 +1766,8 @@ QDF_STATUS csr_scan_create_entry_in_scan_cache(struct mac_context *mac,
 	}
 	sme_debug("Current bssid::"QDF_MAC_ADDR_STR,
 		QDF_MAC_ADDR_ARRAY(pSession->pConnectBssDesc->bssId));
-	sme_debug("My bssid::"QDF_MAC_ADDR_STR" ch_freq %d",
-		QDF_MAC_ADDR_ARRAY(bssid.bytes), ch_freq);
+	sme_debug("My bssid::"QDF_MAC_ADDR_STR" channel %d",
+		QDF_MAC_ADDR_ARRAY(bssid.bytes), channel);
 
 	size = pSession->pConnectBssDesc->length +
 		sizeof(pSession->pConnectBssDesc->length);
@@ -1743,14 +1776,14 @@ QDF_STATUS csr_scan_create_entry_in_scan_cache(struct mac_context *mac,
 		return QDF_STATUS_E_FAILURE;
 	}
 	pNewBssDescriptor = qdf_mem_malloc(size);
-	if (!pNewBssDescriptor)
+	if (pNewBssDescriptor)
 		return QDF_STATUS_E_FAILURE;
 
 	qdf_mem_copy(pNewBssDescriptor, pSession->pConnectBssDesc, size);
 	/* change the BSSID & channel as passed */
 	qdf_mem_copy(pNewBssDescriptor->bssId, bssid.bytes,
 			sizeof(tSirMacAddr));
-	pNewBssDescriptor->chan_freq = ch_freq;
+	pNewBssDescriptor->channelId = channel;
 	if (!csr_scan_append_bss_description(mac, pNewBssDescriptor)) {
 		sme_err("csr_scan_append_bss_description failed");
 		status = QDF_STATUS_E_FAILURE;
@@ -1885,7 +1918,7 @@ csr_get_bssdescr_from_scan_handle(tScanResultHandle result_handle,
 	return bss_descr;
 }
 
-uint32_t
+uint8_t
 csr_get_channel_for_hw_mode_change(struct mac_context *mac_ctx,
 				   tScanResultHandle result_handle,
 				   uint32_t session_id)
@@ -1894,7 +1927,7 @@ csr_get_channel_for_hw_mode_change(struct mac_context *mac_ctx,
 	struct tag_csrscan_result *scan_result = NULL;
 	struct scan_result_list *bss_list =
 				(struct scan_result_list *)result_handle;
-	uint32_t ch_freq = 0;
+	uint8_t channel_id = 0;
 
 	if (!bss_list) {
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_ERROR,
@@ -1922,8 +1955,6 @@ csr_get_channel_for_hw_mode_change(struct mac_context *mac_ctx,
 	}
 
 	if (!policy_mgr_is_hw_dbs_2x2_capable(mac_ctx->psoc) &&
-	    !policy_mgr_is_hw_dbs_required_for_band(mac_ctx->psoc,
-		HW_MODE_MAC_BAND_2G) &&
 	    !policy_mgr_get_connection_count(mac_ctx->psoc)) {
 		QDF_TRACE(QDF_MODULE_ID_SME, QDF_TRACE_LEVEL_DEBUG,
 			  FL("1x1 DBS HW with no prior connection"));
@@ -1942,71 +1973,83 @@ csr_get_channel_for_hw_mode_change(struct mac_context *mac_ctx,
 		scan_result = GET_BASE_ADDR(next_element,
 					    struct tag_csrscan_result,
 					    Link);
-		ch_freq = scan_result->Result.BssDescriptor.chan_freq;
-		if (policy_mgr_is_hw_dbs_required_for_band(
-				mac_ctx->psoc,
-				HW_MODE_MAC_BAND_2G)) {
-			if (WLAN_REG_IS_24GHZ_CH_FREQ(ch_freq))
+		if (policy_mgr_is_hw_dbs_2x2_capable(mac_ctx->psoc)) {
+			if (WLAN_REG_IS_24GHZ_CH
+				(scan_result->Result.BssDescriptor.channelId)) {
+				channel_id =
+					scan_result->
+					Result.BssDescriptor.channelId;
 				break;
+			}
 		} else {
-			if (WLAN_REG_IS_24GHZ_CH_FREQ(ch_freq) &&
+			if (WLAN_REG_IS_24GHZ_CH
+				(scan_result->Result.BssDescriptor.channelId) &&
 			    policy_mgr_is_any_mode_active_on_band_along_with_session
 				(mac_ctx->psoc,
-				 session_id, POLICY_MGR_BAND_5))
+				 session_id, POLICY_MGR_BAND_5)) {
+				channel_id =
+					scan_result->
+					Result.BssDescriptor.channelId;
 				break;
-			if (WLAN_REG_IS_5GHZ_CH_FREQ(ch_freq) &&
+			}
+			if (WLAN_REG_IS_5GHZ_CH
+				(scan_result->Result.BssDescriptor.channelId) &&
 			    policy_mgr_is_any_mode_active_on_band_along_with_session
 				(mac_ctx->psoc,
-				 session_id, POLICY_MGR_BAND_24))
+				 session_id, POLICY_MGR_BAND_24)) {
+				channel_id =
+					scan_result->
+					Result.BssDescriptor.channelId;
 				break;
+			}
 		}
 		next_element = csr_ll_next(&bss_list->List, next_element,
 					   LL_ACCESS_NOLOCK);
 	}
 end:
-	return ch_freq;
+	return channel_id;
 }
 
-uint32_t
+uint8_t
 csr_scan_get_channel_for_hw_mode_change(struct mac_context *mac_ctx,
 					uint32_t session_id,
 					struct csr_roam_profile *profile)
 {
 	tScanResultHandle result_handle = NULL;
 	QDF_STATUS status;
-	uint32_t first_ap_ch_freq = 0, candidate_ch_freq;
+	uint8_t first_ap_ch = 0;
+	uint8_t candidate_chan;
 
 	status = sme_get_ap_channel_from_scan_cache(profile, &result_handle,
-						    &first_ap_ch_freq);
-	if (status != QDF_STATUS_SUCCESS || !result_handle ||
-	    !first_ap_ch_freq) {
+						    &first_ap_ch);
+	if (status != QDF_STATUS_SUCCESS || !result_handle || !first_ap_ch) {
 		if (result_handle)
 			sme_scan_result_purge(result_handle);
 		sme_err("fail get scan result: status %d first ap ch %d",
-			status, first_ap_ch_freq);
+			status, first_ap_ch);
 		return 0;
 	}
-	if (!policy_mgr_check_for_session_conc(
-	    mac_ctx->psoc, session_id, first_ap_ch_freq)) {
+	if (!policy_mgr_check_for_session_conc(mac_ctx->psoc, session_id,
+					       first_ap_ch)) {
 		sme_scan_result_purge(result_handle);
 		sme_err("Conc not allowed for the session %d ch %d",
-			session_id, first_ap_ch_freq);
+			session_id, first_ap_ch);
 		return 0;
 	}
 
-	candidate_ch_freq = csr_get_channel_for_hw_mode_change(mac_ctx,
-							       result_handle,
-							       session_id);
+	candidate_chan = csr_get_channel_for_hw_mode_change(mac_ctx,
+							    result_handle,
+							    session_id);
 	sme_scan_result_purge(result_handle);
-	if (!candidate_ch_freq)
-		candidate_ch_freq = first_ap_ch_freq;
+	if (!candidate_chan)
+		candidate_chan = first_ap_ch;
 	sme_debug("session %d hw mode check candidate_chan %d", session_id,
-		  candidate_ch_freq);
+		  candidate_chan);
 
-	return candidate_ch_freq;
+	return candidate_chan;
 }
 
-enum wlan_auth_type csr_covert_auth_type_new(enum csr_akm_type auth)
+static enum wlan_auth_type csr_covert_auth_type_new(enum csr_akm_type auth)
 {
 	switch (auth) {
 	case eCSR_AUTH_TYPE_NONE:
@@ -2137,7 +2180,7 @@ static enum csr_akm_type csr_covert_auth_type_old(enum wlan_auth_type auth)
 	}
 }
 
-enum wlan_enc_type csr_covert_enc_type_new(eCsrEncryptionType enc)
+static enum wlan_enc_type csr_covert_enc_type_new(eCsrEncryptionType enc)
 {
 	switch (enc) {
 	case eCSR_ENCRYPT_TYPE_NONE:
@@ -2205,6 +2248,242 @@ static eCsrEncryptionType csr_covert_enc_type_old(enum wlan_enc_type enc)
 	default:
 		return eCSR_ENCRYPT_TYPE_NONE;
 	}
+}
+
+#ifdef WLAN_FEATURE_11W
+/**
+ * csr_update_pmf_cap: Updates PMF cap
+ * @src_filter: Source filter
+ * @dst_filter: Destination filter
+ *
+ * Return: None
+ */
+static void csr_update_pmf_cap(tCsrScanResultFilter *src_filter,
+			       struct scan_filter *dst_filter) {
+
+	if (src_filter->MFPCapable || src_filter->MFPEnabled)
+		dst_filter->pmf_cap = WLAN_PMF_CAPABLE;
+	if (src_filter->MFPRequired)
+		dst_filter->pmf_cap = WLAN_PMF_REQUIRED;
+}
+#else
+static inline void csr_update_pmf_cap(tCsrScanResultFilter *src_filter,
+				      struct scan_filter *dst_filter)
+{}
+#endif
+
+/**
+ * csr_convert_dotllmod_phymode: Convert eCsrPhyMode to wlan_phymode
+ * @dotllmode: phy mode
+ *
+ * Return: returns enum wlan_phymode
+ */
+static enum wlan_phymode csr_convert_dotllmod_phymode(eCsrPhyMode dotllmode)
+{
+
+	enum wlan_phymode con_phy_mode;
+
+	switch (dotllmode) {
+	case eCSR_DOT11_MODE_abg:
+		con_phy_mode = WLAN_PHYMODE_AUTO;
+		break;
+	case eCSR_DOT11_MODE_11a:
+		con_phy_mode = WLAN_PHYMODE_11A;
+		break;
+	case eCSR_DOT11_MODE_11b:
+		con_phy_mode = WLAN_PHYMODE_11B;
+		break;
+	case eCSR_DOT11_MODE_11g:
+		con_phy_mode = WLAN_PHYMODE_11G;
+		break;
+	case eCSR_DOT11_MODE_11n:
+		con_phy_mode = WLAN_PHYMODE_11NA_HT20;
+		break;
+	case eCSR_DOT11_MODE_11g_ONLY:
+		con_phy_mode = WLAN_PHYMODE_11G;
+		break;
+	case eCSR_DOT11_MODE_11n_ONLY:
+		con_phy_mode = WLAN_PHYMODE_11NA_HT20;
+		break;
+	case eCSR_DOT11_MODE_11b_ONLY:
+		con_phy_mode = WLAN_PHYMODE_11B;
+		break;
+	case eCSR_DOT11_MODE_11ac:
+		con_phy_mode = WLAN_PHYMODE_11AC_VHT160;
+		break;
+	case eCSR_DOT11_MODE_11ac_ONLY:
+		con_phy_mode = WLAN_PHYMODE_11AC_VHT160;
+		break;
+	case eCSR_DOT11_MODE_AUTO:
+		con_phy_mode = WLAN_PHYMODE_AUTO;
+		break;
+	case eCSR_DOT11_MODE_11ax:
+		con_phy_mode = WLAN_PHYMODE_11AXA_HE160;
+		break;
+	case eCSR_DOT11_MODE_11ax_ONLY:
+		con_phy_mode = WLAN_PHYMODE_11AXA_HE160;
+		break;
+	default:
+		con_phy_mode = WLAN_PHYMODE_AUTO;
+		break;
+	}
+
+	return con_phy_mode;
+}
+
+#ifdef WLAN_ADAPTIVE_11R
+/**
+ * csr_update_adaptive_11r_scan_filter - Copy adaptive 11r ini to scan
+ * module
+ * @mac_ctx: Pointer to mac_context
+ * @scan_filter: Scan filter to be sent to scan module
+ *
+ * Return: None
+ */
+static void
+csr_update_adaptive_11r_scan_filter(struct mac_context *mac_ctx,
+				    struct scan_filter *filter)
+{
+	filter->enable_adaptive_11r =
+		   mac_ctx->mlme_cfg->lfr.enable_adaptive_11r;
+}
+#else
+static inline void
+csr_update_adaptive_11r_scan_filter(struct mac_context *mac_ctx,
+				    struct scan_filter *filter)
+{
+	filter->enable_adaptive_11r = false;
+}
+#endif
+
+static QDF_STATUS csr_prepare_scan_filter(struct mac_context *mac_ctx,
+					  tCsrScanResultFilter *pFilter,
+					  struct scan_filter *filter)
+{
+	int i;
+	uint32_t len = 0;
+	QDF_STATUS status;
+	enum policy_mgr_con_mode new_mode;
+
+	filter->num_of_bssid = pFilter->BSSIDs.numOfBSSIDs;
+	if (filter->num_of_bssid > WLAN_SCAN_FILTER_NUM_BSSID)
+		filter->num_of_bssid = WLAN_SCAN_FILTER_NUM_BSSID;
+	for (i = 0; i < filter->num_of_bssid; i++)
+		qdf_mem_copy(filter->bssid_list[i].bytes,
+			pFilter->BSSIDs.bssid[i].bytes,
+			QDF_MAC_ADDR_SIZE);
+
+	filter->age_threshold = pFilter->age_threshold;
+
+	filter->num_of_ssid = pFilter->SSIDs.numOfSSIDs;
+	if (filter->num_of_ssid > WLAN_SCAN_FILTER_NUM_SSID)
+		filter->num_of_ssid = WLAN_SCAN_FILTER_NUM_SSID;
+	for (i = 0; i < filter->num_of_ssid; i++) {
+		filter->ssid_list[i].length =
+			pFilter->SSIDs.SSIDList[i].SSID.length;
+		qdf_mem_copy(filter->ssid_list[i].ssid,
+			pFilter->SSIDs.SSIDList[i].SSID.ssId,
+			filter->ssid_list[i].length);
+	}
+
+	filter->num_of_channels =
+		pFilter->ChannelInfo.numOfChannels;
+	if (filter->num_of_channels > QDF_MAX_NUM_CHAN)
+		filter->num_of_channels = QDF_MAX_NUM_CHAN;
+	qdf_mem_copy(filter->channel_list,
+			pFilter->ChannelInfo.ChannelList,
+			filter->num_of_channels);
+
+	if (pFilter->realm_check) {
+		filter->fils_scan_filter.realm_check = true;
+		qdf_mem_copy(filter->fils_scan_filter.fils_realm,
+			pFilter->fils_realm, REAM_HASH_LEN);
+	}
+
+	if (pFilter->force_rsne_override) {
+
+		sme_debug("force_rsne_override set auth type and enctype to any and ignore pmf cap");
+
+		filter->num_of_auth = 1;
+		filter->auth_type[0] = WLAN_AUTH_TYPE_ANY;
+		filter->num_of_enc_type = 1;
+		filter->enc_type[0] = WLAN_ENCRYPT_TYPE_ANY;
+		filter->num_of_mc_enc_type = 1;
+		filter->mc_enc_type[0] = WLAN_ENCRYPT_TYPE_ANY;
+
+		filter->ignore_pmf_cap = true;
+	} else {
+		filter->num_of_auth =
+			pFilter->authType.numEntries;
+		if (filter->num_of_auth > WLAN_NUM_OF_SUPPORT_AUTH_TYPE)
+			filter->num_of_auth = WLAN_NUM_OF_SUPPORT_AUTH_TYPE;
+		for (i = 0; i < filter->num_of_auth; i++)
+			filter->auth_type[i] =
+			  csr_covert_auth_type_new(
+			  pFilter->authType.authType[i]);
+		filter->num_of_enc_type =
+			pFilter->EncryptionType.numEntries;
+		if (filter->num_of_enc_type > WLAN_NUM_OF_ENCRYPT_TYPE)
+			filter->num_of_enc_type = WLAN_NUM_OF_ENCRYPT_TYPE;
+		for (i = 0; i < filter->num_of_enc_type; i++)
+			filter->enc_type[i] =
+			  csr_covert_enc_type_new(
+			  pFilter->EncryptionType.encryptionType[i]);
+		filter->num_of_mc_enc_type =
+				pFilter->mcEncryptionType.numEntries;
+		if (filter->num_of_mc_enc_type > WLAN_NUM_OF_ENCRYPT_TYPE)
+			filter->num_of_mc_enc_type = WLAN_NUM_OF_ENCRYPT_TYPE;
+		for (i = 0; i < filter->num_of_mc_enc_type; i++)
+			filter->mc_enc_type[i] =
+			  csr_covert_enc_type_new(
+			  pFilter->mcEncryptionType.encryptionType[i]);
+	}
+	qdf_mem_copy(filter->country, pFilter->countryCode,
+		     CFG_COUNTRY_CODE_LEN);
+
+	if (pFilter->bWPSAssociation || pFilter->bOSENAssociation)
+		filter->ignore_auth_enc_type = true;
+
+	filter->rrm_measurement_filter = pFilter->fMeasurement;
+
+	filter->mobility_domain = pFilter->mdid.mobility_domain;
+
+	filter->p2p_results = pFilter->p2pResult;
+
+	csr_update_pmf_cap(pFilter, filter);
+
+	if (pFilter->BSSType == eCSR_BSS_TYPE_INFRASTRUCTURE)
+		filter->bss_type = WLAN_TYPE_BSS;
+	else if (pFilter->BSSType == eCSR_BSS_TYPE_IBSS ||
+		pFilter->BSSType == eCSR_BSS_TYPE_START_IBSS)
+		filter->bss_type = WLAN_TYPE_IBSS;
+	else
+		filter->bss_type = WLAN_TYPE_ANY;
+
+	filter->dot11_mode = csr_convert_dotllmod_phymode(pFilter->phyMode);
+
+	// enable bss scoring for only STA mode
+	if (pFilter->csrPersona == QDF_STA_MODE)
+		filter->bss_scoring_required = true;
+	else
+		filter->bss_scoring_required = false;
+
+	csr_update_adaptive_11r_scan_filter(mac_ctx, filter);
+
+	if (!pFilter->BSSIDs.numOfBSSIDs) {
+		if (policy_mgr_map_concurrency_mode(
+		   &pFilter->csrPersona, &new_mode)) {
+			status = policy_mgr_get_pcl(mac_ctx->psoc, new_mode,
+				filter->pcl_channel_list, &len,
+				filter->pcl_weight_list, QDF_MAX_NUM_CHAN);
+			filter->num_of_pcl_channels = (uint8_t)len;
+		}
+	}
+	qdf_mem_copy(filter->bssid_hint.bytes,
+			pFilter->bssid_hint.bytes,
+			QDF_MAC_ADDR_SIZE);
+
+	return QDF_STATUS_SUCCESS;
 }
 
 #ifdef WLAN_FEATURE_FILS_SK
@@ -2291,29 +2570,6 @@ static bool csr_is_assoc_disallowed(struct mac_context *mac_ctx,
 	return mbo_ie.assoc_disallowed.present;
 }
 
-#if defined(WLAN_SAE_SINGLE_PMK) && defined(WLAN_FEATURE_ROAM_OFFLOAD)
-/**
- * csr_fill_single_pmk_ap_cap_from_scan_entry() - WAP3_SPMK VSIE from scan
- * entry
- * @bss_desc: BSS Descriptor
- * @scan_entry: scan entry
- *
- * Return: None
- */
-static void
-csr_fill_single_pmk_ap_cap_from_scan_entry(struct bss_description *bss_desc,
-					   struct scan_cache_entry *scan_entry)
-{
-	bss_desc->is_single_pmk = util_scan_entry_single_pmk(scan_entry);
-}
-
-#else
-static inline void
-csr_fill_single_pmk_ap_cap_from_scan_entry(struct bss_description *bss_desc,
-					   struct scan_cache_entry *scan_entry)
-{
-}
-#endif
 static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 					struct scan_cache_entry *scan_entry,
 					struct tag_csrscan_result **p_result)
@@ -2326,18 +2582,6 @@ static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 	struct tag_csrscan_result *bss;
 	uint32_t bss_len, alloc_len, ie_len;
 	QDF_STATUS status;
-	enum channel_state ap_channel_state;
-
-	ap_channel_state =
-		wlan_reg_get_channel_state_for_freq(
-				mac_ctx->pdev,
-				scan_entry->channel.chan_freq);
-	if (ap_channel_state == CHANNEL_STATE_DISABLE ||
-	    ap_channel_state == CHANNEL_STATE_INVALID) {
-		sme_err("BSS %pM channel %d invalid, not populating this BSSID",
-			scan_entry->bssid.bytes, scan_entry->channel.chan_freq);
-		return QDF_STATUS_E_INVAL;
-	}
 
 	ie_len = util_scan_entry_ie_len(scan_entry);
 	ie_ptr = util_scan_entry_ie_data(scan_entry);
@@ -2383,8 +2627,7 @@ static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 	bss_desc->beaconInterval = scan_entry->bcn_int;
 	bss_desc->capabilityInfo = scan_entry->cap_info.value;
 
-	if (WLAN_REG_IS_5GHZ_CH_FREQ(scan_entry->channel.chan_freq) ||
-	    WLAN_REG_IS_6GHZ_CHAN_FREQ(scan_entry->channel.chan_freq))
+	if (WLAN_REG_IS_5GHZ_CH(scan_entry->channel.chan_idx))
 		bss_desc->nwType = eSIR_11A_NW_TYPE;
 	else if (scan_entry->phy_mode == WLAN_PHYMODE_11B)
 		bss_desc->nwType = eSIR_11B_NW_TYPE;
@@ -2394,8 +2637,14 @@ static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 	bss_desc->rssi = scan_entry->rssi_raw;
 	bss_desc->rssi_raw = scan_entry->rssi_raw;
 
-	/* channel frequency what peer sent in beacon/probersp. */
-	bss_desc->chan_freq = scan_entry->channel.chan_freq;
+	/* channelId what peer sent in beacon/probersp. */
+	bss_desc->channelId =
+		scan_entry->channel.chan_idx;
+	/* channelId on which we are parked at. */
+	/* used only in scan case. */
+	bss_desc->channelIdSelf =
+		scan_entry->channel.chan_idx;
+	bss_desc->rx_channel = bss_desc->channelIdSelf;
 	bss_desc->received_time =
 		scan_entry->scan_entry_time;
 	bss_desc->startTSF[0] =
@@ -2411,12 +2660,6 @@ static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 	bss_desc->assoc_disallowed = csr_is_assoc_disallowed(mac_ctx,
 							     scan_entry);
 	bss_desc->adaptive_11r_ap = scan_entry->adaptive_11r_ap;
-
-	bss_desc->mbo_oce_enabled_ap =
-			util_scan_entry_mbo_oce(scan_entry) ? true : false;
-
-	csr_fill_single_pmk_ap_cap_from_scan_entry(bss_desc, scan_entry);
-
 	qdf_mem_copy(&bss_desc->mbssid_info, &scan_entry->mbssid_info,
 		     sizeof(struct scan_mbssid_info));
 
@@ -2448,6 +2691,12 @@ static QDF_STATUS csr_fill_bss_from_scan_entry(struct mac_context *mac_ctx,
 	}
 #endif
 	csr_update_bss_with_fils_data(mac_ctx, scan_entry, bss_desc);
+	if (scan_entry->alt_wcn_ie.ptr) {
+		bss_desc->WscIeLen = scan_entry->alt_wcn_ie.len;
+		qdf_mem_copy(bss_desc->WscIeProbeRsp,
+			scan_entry->alt_wcn_ie.ptr,
+			scan_entry->alt_wcn_ie.len);
+	}
 
 	*p_result = bss;
 	return QDF_STATUS_SUCCESS;
@@ -2457,26 +2706,32 @@ static QDF_STATUS csr_parse_scan_list(struct mac_context *mac_ctx,
 				      struct scan_result_list *ret_list,
 				      qdf_list_t *scan_list)
 {
+	QDF_STATUS status = QDF_STATUS_SUCCESS;
 	struct tag_csrscan_result *pResult = NULL;
 	struct scan_cache_node *cur_node = NULL;
 	struct scan_cache_node *next_node = NULL;
 
-	qdf_list_peek_front(scan_list, (qdf_list_node_t **) &cur_node);
+	status =
+		qdf_list_peek_front(scan_list,
+		   (qdf_list_node_t **) &cur_node);
 
 	while (cur_node) {
-		qdf_list_peek_next(scan_list, (qdf_list_node_t *) cur_node,
-				  (qdf_list_node_t **) &next_node);
-		pResult = NULL;
-		csr_fill_bss_from_scan_entry(mac_ctx,
-					     cur_node->entry, &pResult);
+		qdf_list_peek_next(
+		  scan_list,
+		  (qdf_list_node_t *) cur_node,
+		  (qdf_list_node_t **) &next_node);
+		status = csr_fill_bss_from_scan_entry(mac_ctx,
+			cur_node->entry, &pResult);
+		if (QDF_IS_STATUS_ERROR(status))
+			return status;
 		if (pResult)
 			csr_ll_insert_tail(&ret_list->List, &pResult->Link,
-					   LL_ACCESS_NOLOCK);
+			   LL_ACCESS_NOLOCK);
 		cur_node = next_node;
 		next_node = NULL;
 	}
 
-	return QDF_STATUS_SUCCESS;
+	return status;
 }
 
 /**
@@ -2516,14 +2771,15 @@ static void csr_remove_ap_with_assoc_disallowed(struct mac_context *mac_ctx,
 }
 
 QDF_STATUS csr_scan_get_result(struct mac_context *mac_ctx,
-			       struct scan_filter *filter,
+			       tCsrScanResultFilter *pFilter,
 			       tScanResultHandle *results)
 {
 	QDF_STATUS status;
 	struct scan_result_list *ret_list = NULL;
 	qdf_list_t *list = NULL;
+	struct scan_filter *filter = NULL;
 	struct wlan_objmgr_pdev *pdev = NULL;
-	uint32_t num_bss = 0;
+	uint32_t num_bss;
 
 	if (results)
 		*results = CSR_INVALID_SCANRESULT_HANDLE;
@@ -2535,22 +2791,32 @@ QDF_STATUS csr_scan_get_result(struct mac_context *mac_ctx,
 		return QDF_STATUS_E_INVAL;
 	}
 
-	list = ucfg_scan_get_result(pdev, filter);
-	if (list) {
-		num_bss = qdf_list_size(list);
-		sme_debug("num_entries %d", num_bss);
+	if (pFilter) {
+		filter = qdf_mem_malloc(sizeof(*filter));
+		if (!filter) {
+			status = QDF_STATUS_E_NOMEM;
+			goto error;
+		}
+
+		status = csr_prepare_scan_filter(mac_ctx, pFilter, filter);
+		if (QDF_IS_STATUS_ERROR(status)) {
+			sme_err("Prepare filter failed");
+			goto error;
+		}
 	}
 
+	list = ucfg_scan_get_result(pdev,
+		    pFilter ? filter : NULL);
+	if (list)
+		sme_debug("num_entries %d", qdf_list_size(list));
+
 	/* Filter the scan list with the blacklist, rssi reject, avoided APs */
-	if (filter && filter->bss_scoring_required)
+	if (pFilter && pFilter->csrPersona == QDF_STA_MODE)
 		wlan_blm_filter_bssid(pdev, list);
 
 	if (!list || (list && !qdf_list_size(list))) {
 		sme_debug("scan list empty");
-		if (num_bss)
-			status = QDF_STATUS_E_EXISTS;
-		else
-			status = QDF_STATUS_E_NULL_VALUE;
+		status = QDF_STATUS_E_NULL_VALUE;
 		goto error;
 	}
 
@@ -2562,12 +2828,16 @@ QDF_STATUS csr_scan_get_result(struct mac_context *mac_ctx,
 
 	csr_ll_open(&ret_list->List);
 	ret_list->pCurEntry = NULL;
-	status = csr_parse_scan_list(mac_ctx, ret_list, list);
+	status = csr_parse_scan_list(mac_ctx,
+		ret_list, list);
+	num_bss = csr_ll_count(&ret_list->List);
+	sme_debug("status: %d No of BSS: %d",
+		  status, num_bss);
 	if (QDF_IS_STATUS_ERROR(status) || !results)
 		/* Fail or No one wants the result. */
 		csr_scan_result_purge(mac_ctx, (tScanResultHandle) ret_list);
 	else {
-		if (filter && filter->bss_scoring_required)
+		if (pFilter && pFilter->csrPersona == QDF_STA_MODE)
 			csr_remove_ap_with_assoc_disallowed(mac_ctx, ret_list);
 
 		if (!csr_ll_count(&ret_list->List)) {
@@ -2589,6 +2859,8 @@ QDF_STATUS csr_scan_get_result(struct mac_context *mac_ctx,
 	}
 
 error:
+	if (filter)
+		qdf_mem_free(filter);
 	if (list)
 		ucfg_scan_purge_results(list);
 	if (pdev)
@@ -2602,7 +2874,7 @@ QDF_STATUS csr_scan_get_result_for_bssid(struct mac_context *mac_ctx,
 					 tCsrScanResultInfo *res)
 {
 	QDF_STATUS status = QDF_STATUS_E_FAILURE;
-	struct scan_filter *scan_filter;
+	tCsrScanResultFilter *scan_filter = NULL;
 	tScanResultHandle filtered_scan_result = NULL;
 	tCsrScanResultInfo *scan_result;
 
@@ -2612,13 +2884,18 @@ QDF_STATUS csr_scan_get_result_for_bssid(struct mac_context *mac_ctx,
 		return QDF_STATUS_E_FAILURE;
 	}
 
-	scan_filter = qdf_mem_malloc(sizeof(*scan_filter));
+	scan_filter = qdf_mem_malloc(sizeof(tCsrScanResultFilter));
 	if (!scan_filter)
 		return QDF_STATUS_E_NOMEM;
 
-	scan_filter->num_of_bssid = 1;
-	qdf_mem_copy(scan_filter->bssid_list[0].bytes, bssid->bytes,
-		     QDF_MAC_ADDR_SIZE);
+	scan_filter->BSSIDs.bssid = qdf_mem_malloc(sizeof(*bssid));
+	if (!scan_filter->BSSIDs.bssid) {
+		status = QDF_STATUS_E_FAILURE;
+		goto free_filter;
+	}
+
+	scan_filter->BSSIDs.numOfBSSIDs = 1;
+	qdf_mem_copy(scan_filter->BSSIDs.bssid, bssid, sizeof(*bssid));
 
 	status = csr_scan_get_result(mac_ctx, scan_filter,
 				&filtered_scan_result);
@@ -2646,6 +2923,7 @@ QDF_STATUS csr_scan_get_result_for_bssid(struct mac_context *mac_ctx,
 	csr_scan_result_purge(mac_ctx, filtered_scan_result);
 
 free_filter:
+	csr_free_scan_filter(mac_ctx, scan_filter);
 	if (scan_filter)
 		qdf_mem_free(scan_filter);
 
@@ -2696,27 +2974,6 @@ void csr_remove_bssid_from_scan_list(struct mac_context *mac_ctx,
 	csr_flush_bssid(mac_ctx, bssid);
 }
 
-static void csr_dump_occupied_chan_list(struct csr_channel *occupied_ch)
-{
-	uint8_t idx;
-	uint32_t buff_len;
-	char *chan_buff;
-	uint32_t len = 0;
-
-	buff_len = (occupied_ch->numChannels * 5) + 1;
-	chan_buff = qdf_mem_malloc(buff_len);
-	if (!chan_buff)
-		return;
-
-	for (idx = 0; idx < occupied_ch->numChannels; idx++)
-		len += qdf_scnprintf(chan_buff + len, buff_len - len, " %d",
-				     occupied_ch->channel_freq_list[idx]);
-
-	sme_nofl_debug("Occupied chan list[%d]:%s",
-		       occupied_ch->numChannels, chan_buff);
-
-	qdf_mem_free(chan_buff);
-}
 void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 				     uint8_t sessionId)
 {
@@ -2729,18 +2986,28 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 	tpCsrNeighborRoamControlInfo neighbor_roam_info =
 		&mac_ctx->roam.neighborRoamInfo[sessionId];
 	tCsrRoamConnectedProfile *profile = NULL;
+	uint8_t ch;
 
 	if (!(mac_ctx && mac_ctx->roam.roamSession &&
 	      CSR_IS_SESSION_VALID(mac_ctx, sessionId))) {
 		sme_debug("Invalid session");
 		return;
 	}
-	if (neighbor_roam_info->cfgParams.specific_chan_info.numOfChannels) {
+	if (neighbor_roam_info->cfgParams.channelInfo.numOfChannels) {
 		/*
 		 * Ini file contains neighbor scan channel list, hence NO need
 		 * to build occupied channel list"
 		 */
 		sme_debug("Ini contains neighbor scan ch list");
+		return;
+	}
+
+	if (!csr_neighbor_roam_is_new_connected_profile(mac_ctx, sessionId)) {
+		/*
+		 * Do not flush occupied list since current roam profile matches
+		 * previous
+		 */
+		sme_debug("Current roam profile matches prev");
 		return;
 	}
 
@@ -2765,7 +3032,6 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 	filter->ssid_list[0].length = profile->SSID.length;
 	qdf_mem_copy(filter->ssid_list[0].ssid, profile->SSID.ssId,
 		     profile->SSID.length);
-	csr_update_pmf_cap_from_connected_profile(profile, filter);
 
 	pdev = wlan_objmgr_get_pdev_by_id(mac_ctx->psoc, 0, WLAN_LEGACY_MAC_ID);
 
@@ -2780,8 +3046,7 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 	mac_ctx->scan.roam_candidate_count[sessionId] = 0;
 
 	csr_add_to_occupied_channels(
-			mac_ctx,
-			profile->op_freq,
+			mac_ctx, profile->operationChannel,
 			sessionId,
 			&mac_ctx->scan.occupiedChannels[sessionId],
 			true);
@@ -2789,12 +3054,11 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 	if (list)
 		sme_debug("num_entries %d", qdf_list_size(list));
 	if (!list || (list && !qdf_list_size(list))) {
+		sme_err("get scan result failed");
 		wlan_objmgr_pdev_release_ref(pdev, WLAN_LEGACY_MAC_ID);
 		qdf_mem_free(filter);
 		if (list)
 			ucfg_scan_purge_results(list);
-		csr_dump_occupied_chan_list(
-			&mac_ctx->scan.occupiedChannels[sessionId]);
 		return;
 	}
 
@@ -2802,8 +3066,9 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 	while (cur_lst) {
 		cur_node = qdf_container_of(cur_lst, struct scan_cache_node,
 					    node);
+		ch = cur_node->entry->channel.chan_idx;
 		csr_add_to_occupied_channels(
-				mac_ctx, cur_node->entry->channel.chan_freq,
+				mac_ctx, ch,
 				sessionId,
 				&mac_ctx->scan.occupiedChannels[sessionId],
 				true);
@@ -2811,7 +3076,6 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 		cur_lst = next_lst;
 		next_lst = NULL;
 	}
-	csr_dump_occupied_chan_list(&mac_ctx->scan.occupiedChannels[sessionId]);
 
 	qdf_mem_free(filter);
 	ucfg_scan_purge_results(list);
@@ -2832,11 +3096,8 @@ void csr_init_occupied_channels_list(struct mac_context *mac_ctx,
 QDF_STATUS csr_scan_filter_results(struct mac_context *mac_ctx)
 {
 	QDF_STATUS status = QDF_STATUS_SUCCESS;
-	uint32_t len = sizeof(mac_ctx->roam.valid_ch_freq_list);
+	uint32_t len = sizeof(mac_ctx->roam.validChannelList);
 	struct wlan_objmgr_pdev *pdev = NULL;
-	uint32_t i;
-	uint32_t ch_freq;
-	uint32_t valid_ch_freq_list[CFG_VALID_CHANNEL_LIST_LEN];
 
 	pdev = wlan_objmgr_get_pdev_by_id(mac_ctx->psoc,
 		0, WLAN_LEGACY_MAC_ID);
@@ -2845,7 +3106,7 @@ QDF_STATUS csr_scan_filter_results(struct mac_context *mac_ctx)
 		return QDF_STATUS_E_INVAL;
 	}
 	status = csr_get_cfg_valid_channels(mac_ctx,
-			  mac_ctx->roam.valid_ch_freq_list,
+			  mac_ctx->roam.validChannelList,
 			  &len);
 
 	/* Get valid channels list from CFG */
@@ -2856,15 +3117,8 @@ QDF_STATUS csr_scan_filter_results(struct mac_context *mac_ctx)
 	}
 	sme_debug("No of valid channel %d", len);
 
-	/* This is a temporary conversion till the scm handles freq */
-
-	for (i = 0; i < len; i++) {
-		ch_freq = mac_ctx->roam.valid_ch_freq_list[i];
-		valid_ch_freq_list[i] = ch_freq;
-	}
-
-	ucfg_scan_filter_valid_channel(pdev, valid_ch_freq_list, len);
-
+	ucfg_scan_filter_valid_channel(pdev,
+		mac_ctx->roam.validChannelList, len);
 	wlan_objmgr_pdev_release_ref(pdev, WLAN_LEGACY_MAC_ID);
 	return QDF_STATUS_SUCCESS;
 }

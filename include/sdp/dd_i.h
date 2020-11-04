@@ -29,7 +29,6 @@
 #define DD_POLICY_GID_RESTRICTION		(0x08)
 #define DD_POLICY_SKIP_DECRYPTION_INNER	(0x10)
 #define DD_POLICY_SKIP_DECRYPTION_OUTER	(0x20)
-#define DD_POLICY_TRACE_FILE			(0x40)
 #define DD_POLICY_SECURE_ERASE			(0x80)
 
 #define AID_VENDOR_DDAR_DE_ACCESS		(5300)
@@ -74,10 +73,6 @@ static inline int dd_policy_skip_decryption_inner_and_outer(char flags) {
 
 static inline int dd_policy_skip_decryption_inner(char flags) {
 	return (flags & DD_POLICY_SKIP_DECRYPTION_INNER) ? 1:0;
-}
-
-static inline int dd_policy_trace_file(char flags) {
-	return (flags & DD_POLICY_TRACE_FILE) ? 1:0;
 }
 
 typedef enum {
@@ -172,7 +167,6 @@ struct dd_mmap_layout {
 #define DD_IOCTL_SKIP_DECRYPTION_BOTH	_IO('K', 0x04)
 #define DD_IOCTL_SKIP_DECRYPTION_INNER	_IO('K', 0x05)
 #define DD_IOCTL_NO_SKIP_DECRYPTION		_IO('K', 0x06)
-#define DD_IOCTL_TRACE_DDAR_FILE		_IO('K', 0x07)
 #define DD_IOCTL_SEND_LOG				_IO('D', 0x01)
 
 //#define EXT4_IOC_GET_DD_POLICY			_IO('P', 0x00)
@@ -213,7 +207,7 @@ struct dd_ioc {
 			unsigned long ino;
 			char name[MAX_XATTR_NAME_LEN];
 			char value[MAX_XATTR_LEN];
-			unsigned int size;
+			int size;
 		}xattr;
 		struct {
 			int state;

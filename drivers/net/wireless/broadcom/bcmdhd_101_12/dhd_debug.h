@@ -446,9 +446,6 @@ typedef enum {
 	/* Dropped by driver for any other reason. */
 	RX_PKT_FATE_DRV_DROP_OTHER,
 
-	/* Indicate RX Host Wake up packet. */
-	RX_PKT_FATE_WAKE_PKT,
-
 	} wifi_rx_packet_fate;
 
 typedef enum {

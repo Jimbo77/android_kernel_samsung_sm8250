@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2019 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -23,7 +23,8 @@
 #ifndef _WLAN_NAN_API_H_
 #define _WLAN_NAN_API_H_
 
-#include "wlan_objmgr_peer_obj.h"
+#include "wlan_objmgr_vdev_obj.h"
+#include "wlan_objmgr_psoc_obj.h"
 #include "wlan_policy_mgr_public_struct.h"
 #include "qdf_status.h"
 
@@ -185,12 +186,12 @@ wlan_nan_get_connection_info(struct wlan_objmgr_psoc *psoc,
 			     struct policy_mgr_vdev_entry_info *conn_info);
 
 /**
- * wlan_nan_get_disc_5g_ch_freq: Get NAN Disc 5G channel frequency
+ * wlan_nan_get_disc_5g_ch: Get NAN Disc 5G channel
  * @psoc: pointer to psoc object
  *
- * Return: NAN Disc 5G channel frequency
+ * Return: NAN Disc 5G channel
  */
-uint32_t wlan_nan_get_disc_5g_ch_freq(struct wlan_objmgr_psoc *psoc);
+uint8_t wlan_nan_get_disc_5g_ch(struct wlan_objmgr_psoc *psoc);
 
 /**
  * wlan_nan_get_sap_conc_support: Get NAN+SAP conc support
@@ -200,13 +201,6 @@ uint32_t wlan_nan_get_disc_5g_ch_freq(struct wlan_objmgr_psoc *psoc);
  */
 bool wlan_nan_get_sap_conc_support(struct wlan_objmgr_psoc *psoc);
 
-/**
- * nan_disable_cleanup: Cleanup NAN state upon NAN disable
- * @psoc: pointer to psoc object
- *
- * Return: Cleanup NAN state upon NAN disable
- */
-QDF_STATUS nan_disable_cleanup(struct wlan_objmgr_psoc *psoc);
 #else /* WLAN_FEATURE_NAN */
 static inline QDF_STATUS nan_init(void)
 {
@@ -235,8 +229,7 @@ wlan_nan_get_connection_info(struct wlan_objmgr_psoc *psoc,
 	return QDF_STATUS_E_FAILURE;
 }
 
-static inline uint32_t
-wlan_nan_get_disc_5g_ch_freq(struct wlan_objmgr_psoc *psoc)
+static inline uint8_t wlan_nan_get_disc_5g_ch(struct wlan_objmgr_psoc *psoc)
 {
 	return 0;
 }
@@ -245,12 +238,6 @@ static inline
 bool wlan_nan_get_sap_conc_support(struct wlan_objmgr_psoc *psoc)
 {
 	return false;
-}
-
-static inline
-QDF_STATUS nan_disable_cleanup(struct wlan_objmgr_psoc *psoc)
-{
-	return QDF_STATUS_E_FAILURE;
 }
 #endif /* WLAN_FEATURE_NAN */
 #endif /* _WLAN_NAN_API_H_ */

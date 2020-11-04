@@ -1,7 +1,7 @@
 /*
  * Fundamental constants relating to Neighbor Discovery Protocol
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef _bcmipv6_h_
@@ -80,7 +80,7 @@ BWL_PRE_PACKED_STRUCT struct ipv6_addr {
 		uint8		addr[16];
 } BWL_POST_PACKED_STRUCT;
 
-/* use masks, htonl instead of bit fileds */
+/* XXX use masks, htonl instead of bit fileds */
 
 /* ICMPV6 Header */
 BWL_PRE_PACKED_STRUCT struct icmp6_hdr {

@@ -83,13 +83,6 @@ enum pktpool_empty_cb_state {
 uint32 pktpools_max = 0U; /* maximum number of pools that may be initialized */
 pktpool_t *pktpools_registry[PKTPOOL_MAXIMUM_ID + 1]; /* Pktpool registry */
 
-/* number of pktids that are reserved for pktpool usage at the moment
- * initializing this with max pktids reserved for pktpool
- * pktpool_init, pktpool_fill and pktpool_refill decrements this
- * pktpool_reclaim, pktpool_empty and heap_pkt_release increments this
- */
-uint32 total_pool_pktid_count = 0U;
-
 #ifdef POOL_HEAP_RECONFIG
 typedef struct pktpool_heap_cb_reg {
 	pktpool_heap_cb_t fn;
@@ -123,7 +116,7 @@ static void pktpool_avail_notify(pktpool_t *pktp);
 /** accessor functions required when ROMming this file, forced into RAM */
 
 pktpool_t *
-BCMPOSTTRAPRAMFN(get_pktpools_registry)(int id)
+BCMRAMFN(get_pktpools_registry)(int id)
 {
 	return pktpools_registry[id];
 }
@@ -329,9 +322,6 @@ pktpool_init(osl_t *osh,
 
 		pktp->avail++;
 
-		ASSERT(total_pool_pktid_count > 0);
-		total_pool_pktid_count--;
-
 #ifdef BCMDBG_POOL
 		pktp->dbg_q[pktp->dbg_qlen++].p = p;
 #endif
@@ -377,7 +367,6 @@ pktpool_deinit(osl_t *osh, pktpool_t *pktp)
 
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
-		total_pool_pktid_count++;
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -441,8 +430,6 @@ pktpool_fill(osl_t *osh, pktpool_t *pktp, bool minimal)
 			err = BCME_ERROR;
 			break;
 		}
-		ASSERT(total_pool_pktid_count > 0);
-		total_pool_pktid_count--;
 	}
 
 	/* protect shared resource */
@@ -742,7 +729,7 @@ pktpool_reclaim(osl_t *osh, pktpool_t *pktp, uint16 free_cnt, uint8 action)
 			continue;
 		}
 		if (cb != NULL) {
-			if (cb(pktp, arg, p, REMOVE_RXCPLID, NULL)) {
+			if (cb(pktp, arg, p, REMOVE_RXCPLID)) {
 				PKTSETFREELIST(p, pktp->freelist);
 				pktp->freelist = p;
 				break;
@@ -754,7 +741,6 @@ pktpool_reclaim(osl_t *osh, pktpool_t *pktp, uint16 free_cnt, uint8 action)
 		pktp->avail--;
 		pktp->n_pkts--;
 
-		total_pool_pktid_count++;
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -808,7 +794,6 @@ pktpool_empty(osl_t *osh, pktpool_t *pktp)
 
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
-		total_pool_pktid_count++;
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		freed++;
@@ -830,7 +815,7 @@ pktpool_empty(osl_t *osh, pktpool_t *pktp)
 }
 
 int
-BCMPOSTTRAPFN(pktpool_avail)(pktpool_t *pktpool)
+pktpool_avail(pktpool_t *pktpool)
 {
 	int avail = pktpool->avail;
 
@@ -842,7 +827,7 @@ BCMPOSTTRAPFN(pktpool_avail)(pktpool_t *pktpool)
 }
 
 static void *
-BCMPOSTTRAPFASTPATH(pktpool_deq)(pktpool_t *pktp)
+BCMFASTPATH(pktpool_deq)(pktpool_t *pktp)
 {
 	void *p = NULL;
 
@@ -862,7 +847,7 @@ BCMPOSTTRAPFASTPATH(pktpool_deq)(pktpool_t *pktp)
 }
 
 static void
-BCMPOSTTRAPFASTPATH(pktpool_enq)(pktpool_t *pktp, void *p)
+BCMFASTPATH(pktpool_enq)(pktpool_t *pktp, void *p)
 {
 	ASSERT_FP(p != NULL);
 
@@ -1311,7 +1296,7 @@ pktpool_avail_notify_exclusive(osl_t *osh, pktpool_t *pktp, pktpool_cb_t cb)
 }
 
 static void
-BCMPOSTTRAPFN(pktpool_avail_notify)(pktpool_t *pktp)
+pktpool_avail_notify(pktpool_t *pktp)
 {
 	int i, k, idx;
 
@@ -1352,53 +1337,27 @@ BCMPOSTTRAPFN(pktpool_avail_notify)(pktpool_t *pktp)
 
 /** Gets an empty packet from the caller provided pool */
 void *
-BCMPOSTTRAPFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type, uint *pktcnt)
+BCMFASTPATH(pktpool_get_ext)(pktpool_t *pktp, uint8 type)
 {
-	void *p = NULL;
-#ifdef APP_RX
-	void *_p, *freelist;
-#endif /* APP_RX */
-	uint pkts_requested = 1;
-
-	if (pktcnt) {
-		pkts_requested = *pktcnt;
-	}
+	void *p;
 
 	/* protect shared resource */
 	if (HND_PKTPOOL_MUTEX_ACQUIRE(&pktp->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
 		return NULL;
 
-	/* If there are lesser packets in the pool than requested, call
-	 * pktpool_empty_notify() to reclaim more pkts.
-	 */
-	if (pktp->avail < pkts_requested) {
+	p = pktpool_deq(pktp);
+
+	if (p == NULL) {
 		/* Notify and try to reclaim tx pkts */
-		if (pktp->ecbcnt) {
+		if (pktp->ecbcnt)
 			pktpool_empty_notify(pktp);
-		}
 
-		if (pktp->avail < pkts_requested) {
-			pktpool_emptycb_disable(pktp, FALSE);
-			if (pktp->avail == 0) {
-				goto done;
-			}
-		}
-	}
-
-#ifdef APP_RX
-	if (pktcnt) {
-		p = pktp->freelist;
-		if (pktp->avail < pkts_requested) {
-			pkts_avail = pktp->avail;
-		}
-	} else
-#endif /* APP_RX */
-	{
-		ASSERT_FP(pkts_requested == 1);
 		p = pktpool_deq(pktp);
+		if (p == NULL) {
+			pktpool_emptycb_disable(pktp, FALSE);
+			goto done;
+		}
 	}
-
-	ASSERT_FP(p);
 
 done:
 	if ((pktp->avail == 0) && (pktp->emptycb_disable == EMPTYCB_SKIPPED)) {
@@ -1412,7 +1371,7 @@ done:
 }
 
 void
-BCMPOSTTRAPFASTPATH(pktpool_free)(pktpool_t *pktp, void *p)
+BCMFASTPATH(pktpool_free)(pktpool_t *pktp, void *p)
 {
 	/* protect shared resource */
 	if (HND_PKTPOOL_MUTEX_ACQUIRE(&pktp->mutex, OSL_EXT_TIME_FOREVER) != OSL_EXT_SUCCESS)
@@ -1519,7 +1478,7 @@ BCMRAMFN(pktpool_setmaxlen)(pktpool_t *pktp, uint16 maxlen)
 }
 
 void
-BCMPOSTTRAPFN(pktpool_emptycb_disable)(pktpool_t *pktp, bool disable)
+pktpool_emptycb_disable(pktpool_t *pktp, bool disable)
 {
 	bool notify = FALSE;
 	ASSERT(pktp);
@@ -1580,10 +1539,6 @@ struct resv_info *resv_pool_info = NULL;
 #endif /* BCMRESVFRAGPOOL */
 #endif /* BCMFRAGPOOL */
 
-#ifdef BCMALFRAGPOOL
-pktpool_t *pktpool_shared_alfrag = NULL;
-#endif /* BCMCTFRAGPOOL */
-
 pktpool_t *pktpool_shared_rxlfrag = NULL;
 
 #if defined(BCMD11HDRPOOL)
@@ -1610,14 +1565,14 @@ hnd_pktpool_init(osl_t *osh)
 	if (n != PKTPOOL_MAXIMUM_ID) {
 		ASSERT(0);
 		err = BCME_ERROR;
-		goto error;
+		goto error0;
 	}
 
 	pktpool_shared = MALLOCZ(osh, sizeof(pktpool_t));
 	if (pktpool_shared == NULL) {
 		ASSERT(0);
 		err = BCME_NOMEM;
-		goto error;
+		goto error1;
 	}
 
 #if defined(BCMFRAGPOOL) && !defined(BCMFRAGPOOL_DISABLED)
@@ -1625,40 +1580,29 @@ hnd_pktpool_init(osl_t *osh)
 	if (pktpool_shared_lfrag == NULL) {
 		ASSERT(0);
 		err = BCME_NOMEM;
-		goto error;
+		goto error2;
 	}
 
 #if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
 	resv_pool_info = hnd_resv_pool_alloc(osh);
 	if (resv_pool_info == NULL) {
-		err = BCME_NOMEM;
 		ASSERT(0);
-		goto error;
+		goto error2;
 	}
 	pktpool_resv_lfrag = resv_pool_info->pktp;
 	if (pktpool_resv_lfrag == NULL) {
-		err = BCME_ERROR;
 		ASSERT(0);
-		goto error;
+		goto error2;
 	}
 #endif	/* RESVFRAGPOOL */
 #endif /* FRAGPOOL */
-
-#if defined(BCMALFRAGPOOL) && !defined(BCMALFRAGPOOL_DISABLED)
-	pktpool_shared_alfrag = MALLOCZ(osh, sizeof(pktpool_t));
-	if (pktpool_shared_alfrag == NULL) {
-		ASSERT(0);
-		err = BCME_NOMEM;
-		goto error;
-	}
-#endif /* BCMCTFRAGPOOL */
 
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
 	pktpool_shared_rxlfrag = MALLOCZ(osh, sizeof(pktpool_t));
 	if (pktpool_shared_rxlfrag == NULL) {
 		ASSERT(0);
 		err = BCME_NOMEM;
-		goto error;
+		goto error3;
 	}
 #endif
 
@@ -1667,7 +1611,7 @@ hnd_pktpool_init(osl_t *osh)
 	if (pktpool_d11hdr == NULL) {
 		ASSERT(0);
 		err = BCME_NOMEM;
-		goto error;
+		goto error4;
 	}
 #endif /* BCMD11HDRPOOL && !BCMD11HDRPOOL_DISABLED */
 
@@ -1694,7 +1638,7 @@ hnd_pktpool_init(osl_t *osh)
 			&n, PKTBUFSZ, FALSE, lbuf_basic, FALSE, 0, 0)) != BCME_OK) {
 #endif
 		ASSERT(0);
-		goto error;
+		goto error5;
 	}
 	pktpool_setmaxlen(pktpool_shared, SHARED_POOL_LEN);
 
@@ -1714,7 +1658,7 @@ hnd_pktpool_init(osl_t *osh)
 				is_heap_pool, POOL_HEAP_FLAG_D3, SHARED_FRAG_POOL_LEN >> 3)) !=
 				BCME_OK) {
 			ASSERT(0);
-			goto error;
+			goto error6;
 		}
 		pktpool_setmaxlen(pktpool_shared_lfrag, SHARED_FRAG_POOL_LEN);
 	}
@@ -1723,31 +1667,16 @@ hnd_pktpool_init(osl_t *osh)
 	n = 0; /* IMPORTANT: DO NOT allocate any packets in resv pool */
 #ifdef RESV_POOL_HEAP
 	is_heap_pool = TRUE;
-#else
-	is_heap_pool = FALSE;
 #endif /* RESV_POOL_HEAP */
 
-	if ((err = pktpool_init(osh, pktpool_resv_lfrag, &n, PKTFRAGSZ, TRUE, lbuf_frag,
-		is_heap_pool, POOL_HEAP_FLAG_RSRVPOOL, 0)) != BCME_OK) {
+	if (pktpool_init(osh, pktpool_resv_lfrag, &n, PKTFRAGSZ, TRUE, lbuf_frag, is_heap_pool,
+			POOL_HEAP_FLAG_RSRVPOOL, 0) == BCME_ERROR) {
 		ASSERT(0);
-		goto error;
+		goto error6;
 	}
 	pktpool_setmaxlen(pktpool_resv_lfrag, RESV_FRAG_POOL_LEN);
 #endif /* RESVFRAGPOOL */
 #endif /* BCMFRAGPOOL */
-
-#if defined(BCMALFRAGPOOL) && !defined(BCMALFRAGPOOL_DISABLED)
-	n = 1;
-	is_heap_pool = FALSE;
-
-	if ((err = pktpool_init(osh, pktpool_shared_alfrag, &n,
-		PKTFRAGSZ, TRUE, lbuf_alfrag,
-			is_heap_pool, 0, SHARED_ALFRAG_POOL_LEN >> 3)) != BCME_OK) {
-		ASSERT(0);
-		goto error;
-	}
-	pktpool_setmaxlen(pktpool_shared_alfrag, SHARED_ALFRAG_POOL_LEN);
-#endif /* BCMCTFRAGPOOL */
 
 #if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
 	n = 1;
@@ -1765,7 +1694,7 @@ hnd_pktpool_init(osl_t *osh)
 	if ((err = pktpool_init(osh, pktpool_shared_rxlfrag, &n, pktsz, TRUE, lbuf_rxfrag,
 			is_heap_pool, POOL_HEAP_FLAG_D3, 0)) != BCME_OK) {
 		ASSERT(0);
-		goto error;
+		goto error8;
 	}
 
 	if (HWA_SUBMODULES_RXPOSTFILL_ENAB()) {
@@ -1783,7 +1712,7 @@ hnd_pktpool_init(osl_t *osh)
 				&n_pkts, buf_size, FALSE, 0, FALSE, 0, 0);
 		if (err != BCME_OK) {
 			ASSERT(0);
-			goto error;
+			goto error81;
 		}
 		pktpool_setmaxlen(pktpool_d11hdr, D11HDR_POOL_LEN);
 	}
@@ -1804,8 +1733,7 @@ hnd_pktpool_init(osl_t *osh)
 #endif /* BCMRXFRAGPOOL */
 			pktpool_shared)) == NULL) {
 		ASSERT(0);
-		err = BCME_NOMEM;
-		goto error;
+		goto error9;
 	}
 #endif /* defined(BCMFRWDPOOLREORG) && !defined(BCMFRWDPOOLREORG_DISABLED) */
 
@@ -1818,85 +1746,62 @@ hnd_pktpool_init(osl_t *osh)
 
 	return BCME_OK;
 
-error:
-	hnd_pktpool_deinit(osh);
-
-	return err;
-} /* hnd_pktpool_init */
-
-void
-hnd_pktpool_deinit(osl_t *osh)
-{
 #if defined(BCMFRWDPOOLREORG) && !defined(BCMFRWDPOOLREORG_DISABLED)
-	if (frwd_poolreorg_info != NULL) {
-		poolreorg_detach(frwd_poolreorg_info);
-	}
+	/* detach poolreorg module */
+	poolreorg_detach(frwd_poolreorg_info);
+error9:
 #endif /* defined(BCMFRWDPOOLREORG) && !defined(BCMFRWDPOOLREORG_DISABLED) */
 
-#if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
-	if (pktpool_shared_rxlfrag != NULL) {
-		if (pktpool_shared_rxlfrag->inited) {
-			pktpool_deinit(osh, pktpool_shared_rxlfrag);
-		}
+#if defined(BCMD11HDRPOOL) && !defined(BCMD11HDRPOOL_DISABLED)
+	pktpool_deinit(osh, pktpool_d11hdr);
+error81:
+#endif /* defined(BCMD11HDRPOOL) && !defined(BCMD11HDRPOOL_DISABLED) */
 
-		hnd_free(pktpool_shared_rxlfrag);
-		pktpool_shared_rxlfrag = (pktpool_t *)NULL;
-	}
+#if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
+	pktpool_deinit(osh, pktpool_shared_rxlfrag);
+error8:
 #endif
 
 #if defined(BCMFRAGPOOL) && !defined(BCMFRAGPOOL_DISABLED)
-	if (pktpool_shared_lfrag != NULL) {
-		if (!HWA_SUBMODULES_TXPOST_ENAB() && pktpool_shared_lfrag->inited) {
-			pktpool_deinit(osh, pktpool_shared_lfrag);
-		}
-		hnd_free(pktpool_shared_lfrag);
-		pktpool_shared_lfrag = (pktpool_t *)NULL;
+	if (!HWA_SUBMODULES_TXPOST_ENAB()) {
+		pktpool_deinit(osh, pktpool_shared_lfrag);
 	}
-#endif /* BCMFRAGPOOL */
+error6:
+#endif
 
-#if defined(BCMALFRAGPOOL) && !defined(BCMALFRAGPOOL_DISABLED)
-	if (pktpool_shared_alfrag != NULL) {
-		if (pktpool_shared_alfrag->inited) {
-			pktpool_deinit(osh, pktpool_shared_alfrag);
-		}
-		hnd_free(pktpool_shared_alfrag);
-		pktpool_shared_alfrag = (pktpool_t *)NULL;
-	}
-#endif /* BCMFRAGPOOL */
+#if (defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)) || \
+	(defined(BCMFRAGPOOL) && !defined(BCMFRAGPOOL_DISABLED))
+	pktpool_deinit(osh, pktpool_shared);
+#endif
+error5:
 
 #if defined(BCMD11HDRPOOL) && !defined(BCMD11HDRPOOL_DISABLED)
-	if (pktpool_d11hdr != NULL) {
-		if (pktpool_d11hdr->inited) {
-			pktpool_deinit(osh, pktpool_d11hdr);
-		}
+	hnd_free(pktpool_d11hdr);
+	pktpool_d11hdr = (pktpool_t *)NULL;
+error4:
+#endif /* BCMD11HDRPOOL && !BCMD11HDRPOOL_DISABLED */
 
-		hnd_free(pktpool_d11hdr);
-		pktpool_d11hdr = (pktpool_t *)NULL;
-	}
-#endif /* BCMD11HDRPOOL */
+#if defined(BCMRXFRAGPOOL) && !defined(BCMRXFRAGPOOL_DISABLED)
+	hnd_free(pktpool_shared_rxlfrag);
+	pktpool_shared_rxlfrag = (pktpool_t *)NULL;
+error3:
+#endif /* BCMRXFRAGPOOL */
 
-#if defined(BCMRESVFRAGPOOL) && !defined(BCMRESVFRAGPOOL_DISABLED)
-	if (resv_pool_info != NULL) {
-		if (pktpool_resv_lfrag != NULL) {
-			pktpool_resv_lfrag = NULL;
-		}
-		hnd_free(resv_pool_info);
-	}
-#endif /* RESVFRAGPOOL */
+#if defined(BCMFRAGPOOL) && !defined(BCMFRAGPOOL_DISABLED)
+	hnd_free(pktpool_shared_lfrag);
+	pktpool_shared_lfrag = (pktpool_t *)NULL;
+error2:
+#endif /* BCMFRAGPOOL */
 
-	if (pktpool_shared != NULL) {
-		if (pktpool_shared->inited) {
-			pktpool_deinit(osh, pktpool_shared);
-		}
+	hnd_free(pktpool_shared);
+	pktpool_shared = (pktpool_t *)NULL;
 
-		hnd_free(pktpool_shared);
-		pktpool_shared = (pktpool_t *)NULL;
-	}
-
+error1:
 	pktpool_dettach(osh);
-
+error0:
 	MALLOC_CLEAR_NOPERSIST(osh);
-}
+	return err;
+} /* hnd_pktpool_init */
 
 /** is called at each 'wl up' */
 int
@@ -1931,13 +1836,6 @@ hnd_pktpool_refill(bool minimal)
 		pktpool_fill(pktpool_osh, pktpool_shared_lfrag, minimal);
 	}
 #endif /* BCMFRAGPOOL */
-
-/* alfragpool reclaim */
-#ifdef BCMALFRAGPOOL
-	if (POOL_ENAB(pktpool_shared_alfrag)) {
-		pktpool_fill(pktpool_osh, pktpool_shared_alfrag, minimal);
-	}
-#endif /* BCMALFRAGPOOL */
 
 /* rx fragpool reclaim */
 #ifdef BCMRXFRAGPOOL
@@ -2060,7 +1958,7 @@ hnd_pktpool_heap_pkt_release(osl_t *osh, pktpool_t *pktp, uint32 flag)
 		PKTSETFREELIST(p, NULL);
 
 		if (cb != NULL) {
-			if (cb(pktp, arg, p, REMOVE_RXCPLID, NULL)) {
+			if (cb(pktp, arg, p, REMOVE_RXCPLID)) {
 				PKTSETFREELIST(p, pktp->freelist);
 				pktp->freelist = p;
 				break;
@@ -2070,7 +1968,6 @@ hnd_pktpool_heap_pkt_release(osl_t *osh, pktpool_t *pktp, uint32 flag)
 		PKTSETPOOL(osh, p, FALSE, NULL); /* clear pool ID tag in pkt */
 
 		lb_set_nofree(p);
-		total_pool_pktid_count++;
 		PKTFREE(osh, p, pktp->istx); /* free the packet */
 
 		rte_freelist_mgr_add(p, pktp->mem_handle);
@@ -2145,10 +2042,6 @@ hnd_pktpool_heap_get_cb(uint8 handle, void *ctxt, void *pkt, uint pktsize)
 			pktp->type, pkt, pktsize)) != NULL) {
 			if ((ret = pktpool_add(pktp, lb)) == BCME_OK) {
 				pktp->poolheap_count--;
-#ifndef HWA
-				ASSERT(total_pool_pktid_count > 0);
-				total_pool_pktid_count--;
-#endif /* HWA */
 				if (pktp->poolheap_count == 0) {
 					pktp->release_active = FALSE;
 					hnd_pktpool_release_active_reset(pktp);
@@ -2220,9 +2113,4 @@ hnd_pktpool_get_min_bkup_buf(pktpool_t *pktp)
 }
 #endif /* POOL_HEAP_RECONFIG */
 
-uint32
-hnd_pktpool_get_total_poolheap_count(void)
-{
-	return total_pool_pktid_count;
-}
 #endif /* BCMPKTPOOL */

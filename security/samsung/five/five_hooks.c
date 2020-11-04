@@ -39,8 +39,6 @@ struct five_hook_heads five_hook_heads = {
 		LIST_HEAD_INIT(five_hook_heads.task_forked),
 	.integrity_reset =
 		LIST_HEAD_INIT(five_hook_heads.integrity_reset),
-	.integrity_reset2 =
-		LIST_HEAD_INIT(five_hook_heads.integrity_reset2),
 };
 
 enum five_hook_event {
@@ -75,8 +73,6 @@ struct hook_wq_event {
 		} forked;
 		struct {
 			struct task_struct *task;
-			struct file *file;
-			enum task_integrity_reset_cause cause;
 		} reset;
 	};
 };
@@ -107,8 +103,6 @@ static void hook_wq_event_destroy(struct hook_wq_event *event)
 		break;
 	}
 	case INTEGRITY_RESET: {
-		if (event->reset.file)
-			fput(event->reset.file);
 		put_task_struct(event->reset.task);
 		break;
 	}
@@ -171,8 +165,6 @@ static void hook_handler(struct work_struct *in_data)
 	case INTEGRITY_RESET: {
 		call_void_hook(integrity_reset,
 			event->reset.task);
-		call_void_hook(integrity_reset2, event->reset.task,
-			       event->reset.file, event->reset.cause);
 		break;
 	}
 	}
@@ -291,9 +283,7 @@ int five_hook_wq_init(void)
 	return 0;
 }
 
-void five_hook_integrity_reset(struct task_struct *task,
-			       struct file *file,
-			       enum task_integrity_reset_cause cause)
+void five_hook_integrity_reset(struct task_struct *task)
 {
 	struct hook_wq_event event = {0};
 
@@ -302,11 +292,7 @@ void five_hook_integrity_reset(struct task_struct *task,
 
 	event.event = INTEGRITY_RESET;
 	get_task_struct(task);
-	if (file)
-		get_file(file);
 	event.reset.task = task;
-	event.reset.file = file;
-	event.reset.cause = cause;
 
 	if (__push_event(&event, GFP_KERNEL) < 0)
 		hook_wq_event_destroy(&event);

@@ -2380,6 +2380,7 @@ static inline void mmc_blk_rw_reset_success(struct mmc_queue *mq,
 static void mmc_blk_mq_complete_rq(struct mmc_queue *mq, struct request *req)
 {
 	struct mmc_queue_req *mqrq = req_to_mmc_queue_req(req);
+	struct mmc_card *card = mq->card;
 	unsigned int nr_bytes = mqrq->brq.data.bytes_xfered;
 
 	if (nr_bytes) {
@@ -2389,7 +2390,7 @@ static void mmc_blk_mq_complete_rq(struct mmc_queue *mq, struct request *req)
 			__blk_mq_end_request(req, BLK_STS_OK);
 	} else if (!blk_rq_bytes(req)) {
 		__blk_mq_end_request(req, BLK_STS_IOERR);
-	} else if (mqrq->retries++ < MMC_MAX_RETRIES) {
+	} else if ((mqrq->retries++ < MMC_MAX_RETRIES) && card && !mmc_card_sd(card)) {
 		blk_mq_requeue_request(req, true);
 	} else {
 		if (mmc_card_removed(mq->card))

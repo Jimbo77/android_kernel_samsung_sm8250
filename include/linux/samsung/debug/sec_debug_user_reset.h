@@ -8,7 +8,7 @@
 
 #include "sec_debug_user_reset_type.h"
 
-#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+#ifdef CONFIG_SEC_USER_RESET_DEBUG
 extern void sec_debug_store_additional_dbg(enum extra_info_dbg_type type, unsigned int value, const char *fmt, ...);
 
 /* called @ kernel/panic.c */
@@ -48,14 +48,13 @@ static inline void sec_debug_store_pte(unsigned long addr, int idx)
 	if (p_ex_info->cpu != -1)
 		return;
 
-	cpu = get_cpu();
+	cpu = smp_processor_id();
 
 	if(idx == 0)
 		memset(&p_ex_info->fault[cpu].pte, 0,
 				sizeof(p_ex_info->fault[cpu].pte));
 
 	p_ex_info->fault[cpu].pte[idx] = addr;
-	put_cpu();
 }
 
 /* called @ arch/arm64/mm/fault.c */
@@ -72,7 +71,7 @@ static inline void sec_debug_save_fault_info(unsigned int esr, const char *str,
 	if (p_ex_info->cpu != -1)
 		return;
 
-	cpu = get_cpu();
+	cpu = smp_processor_id();
 
 	p_ex_info->fault[cpu].esr = esr;
 	snprintf(p_ex_info->fault[cpu].str,
@@ -80,7 +79,6 @@ static inline void sec_debug_save_fault_info(unsigned int esr, const char *str,
 			"%s", str);
 	p_ex_info->fault[cpu].var1 = var1;
 	p_ex_info->fault[cpu].var2 = var2;
-	put_cpu();
 }
 
 /* called @ arch/arm64/kernel/traps.c */

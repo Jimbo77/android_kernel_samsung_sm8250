@@ -38,7 +38,6 @@
 #ifndef _UFSHPB_H_
 #define _UFSHPB_H_
 
-#include <linux/of.h>
 #include <linux/interrupt.h>
 #include <linux/sysfs.h>
 #include <linux/blktrace_api.h>
@@ -50,11 +49,8 @@
 #include "../scsi_priv.h"
 
 /* Version info*/
-#define UFSHPB_MIN_VER                         0x0210
-#define UFSHPB_MAX_VER                         0x0230
-#define UFSHPB_RTRESET_VER                     0x0220
-#define UFSHPB_HPBEN_VER                       0x0230
-#define UFSHPB_DD_VER                          0x020309
+#define UFSHPB_VER				0x0220
+#define UFSHPB_DD_VER                           0x020306
 #define UFSHPB_DD_VER_POST			""
 
 /* Constant value*/

@@ -30,7 +30,6 @@
 
 #define INPUT_FEATURE_SUPPORT_OPEN_SHORT_TEST		(1 << 8) /* open/short test support */
 #define INPUT_FEATURE_SUPPORT_MIS_CALIBRATION_TEST	(1 << 9) /* mis-calibration test support */
-#define INPUT_FEATURE_ENABLE_MULTI_CALIBRATION		(1 << 10) /* multi calibration support */
 
 /*
  * sec Log
@@ -45,7 +44,8 @@
 #define input_dbg(mode, dev, fmt, ...)						\
 ({										\
 	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
-	dev_dbg(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
 	if (mode) {								\
 		if (dev)							\
 			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
@@ -58,7 +58,8 @@
 #define input_info(mode, dev, fmt, ...)						\
 ({										\
 	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
-	dev_info(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
 	if (mode) {								\
 		if (dev)							\
 			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
@@ -71,7 +72,8 @@
 #define input_err(mode, dev, fmt, ...)						\
 ({										\
 	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
-	dev_err(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
 	if (mode) {								\
 		if (dev)							\
 			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s",	\
@@ -88,7 +90,8 @@
 #define input_raw_info(mode, dev, fmt, ...)					\
 ({										\
 	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
-	dev_info(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
 	if (mode == SUB_TOUCH) {						\
  		if (dev)							\
 			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", \
@@ -112,7 +115,8 @@
 #define input_raw_info(mode, dev, fmt, ...)					\
 ({										\
 	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
-	dev_info(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
 	if (mode) {								\
 		if (dev)							\
 			snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", \
@@ -129,15 +133,21 @@
 #else
 #define input_dbg(mode, dev, fmt, ...)						\
 ({										\
-	dev_dbg(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_dbg(dev, input_log_buf, ## __VA_ARGS__);				\
 })
 #define input_info(mode, dev, fmt, ...)						\
 ({										\
-	dev_info(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_info(dev, input_log_buf, ## __VA_ARGS__);				\
 })
 #define input_err(mode, dev, fmt, ...)						\
 ({										\
-	dev_err(dev, SECLOG fmt, ## __VA_ARGS__);				\
+	static char input_log_buf[INPUT_LOG_BUF_SIZE];				\
+	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
 })
 #define input_raw_info(mode, dev, fmt, ...) input_info(mode, dev, fmt, ## __VA_ARGS__)
 #define input_log_fix()	{}
@@ -368,7 +378,6 @@ struct input_mask {
  */
 #define SW_FLIP                 0x15  /* set = flip cover open, close*/
 #define SW_CERTIFYHALL          0x1b  /* set = certify_hall attach/detach */
-#define SW_HALL_LOGICAL		0x1f  /* set = logical hall ic attach/detach */
 
 /*
  * IDs.

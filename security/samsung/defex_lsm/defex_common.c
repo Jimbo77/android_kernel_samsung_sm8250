@@ -7,8 +7,6 @@
  */
 
 
-#include <linux/uaccess.h>
-#include <linux/cred.h>
 #include <linux/dcache.h>
 #include <linux/err.h>
 #include <linux/file.h>
@@ -34,60 +32,11 @@
 #include <linux/sched/task.h>
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
-
-inline ssize_t __vfs_read(struct file *file, char __user *buf,
-				 size_t count, loff_t *pos)
-{
-	ssize_t ret;
-
-	if (file->f_op->read)
-		ret = file->f_op->read(file, buf, count, pos);
-	else if (file->f_op->aio_read)
-		ret = do_sync_read(file, buf, count, pos);
-	else if (file->f_op->read_iter)
-		ret = new_sync_read(file, buf, count, pos);
-	else
-		ret = -EINVAL;
-
-	return ret;
-}
-#endif
-
-struct file *local_fopen(const char *fname, int flags, umode_t mode)
-{
-	struct file *f;
-	mm_segment_t old_fs;
-
-	old_fs = get_fs();
-	set_fs(get_ds());
-	f = filp_open(fname, flags, mode);
-	set_fs(old_fs);
-	return f;
-}
-
-int local_fread(struct file *f, loff_t offset, void *ptr, unsigned long bytes)
-{
-	mm_segment_t old_fs;
-	char __user *buf = (char __user *)ptr;
-	ssize_t ret;
-
-	if (!(f->f_mode & FMODE_READ))
-		return -EBADF;
-
-	old_fs = get_fs();
-	set_fs(get_ds());
-	ret = __vfs_read(f, buf, bytes, &offset);
-	set_fs(old_fs);
-	return (int)ret;
-}
 
 const char unknown_file[] = "<unknown filename>";
 
 void init_defex_context(struct defex_context *dc, int syscall, struct task_struct *p, struct file *f)
 {
-	const struct cred *cred_ptr;
-
 	dc->syscall_no = syscall;
 	dc->task = p;
 	dc->process_file = NULL;
@@ -98,12 +47,6 @@ void init_defex_context(struct defex_context *dc, int syscall, struct task_struc
 	dc->target_name = NULL;
 	dc->process_name_buff = NULL;
 	dc->target_name_buff = NULL;
-	if (p == current)
-		cred_ptr = get_current_cred();
-	else
-		cred_ptr = get_task_cred(p);
-	memcpy(&dc->cred, cred_ptr, sizeof(struct cred));
-	put_cred(cred_ptr);
 }
 
 void release_defex_context(struct defex_context *dc)
@@ -150,7 +93,7 @@ char *get_dc_process_name(struct defex_context *dc)
 	if (!dc->process_name) {
 		dpath = get_dc_process_dpath(dc);
 		if (dpath) {
-			dc->process_name_buff = kmalloc(PATH_MAX, GFP_KERNEL);
+			dc->process_name_buff = kzalloc(PATH_MAX, GFP_ATOMIC);
 			if (dc->process_name_buff)
 				path = d_path(dpath, dc->process_name_buff, PATH_MAX);
 		}
@@ -184,7 +127,7 @@ char *get_dc_target_name(struct defex_context *dc)
 	if (!dc->target_name) {
 		dpath = get_dc_target_dpath(dc);
 		if (dpath) {
-			dc->target_name_buff = kmalloc(PATH_MAX, GFP_KERNEL);
+			dc->target_name_buff = kzalloc(PATH_MAX, GFP_ATOMIC);
 			if (dc->target_name_buff)
 				path = d_path(dpath, dc->target_name_buff, PATH_MAX);
 		}
@@ -255,7 +198,7 @@ char *defex_get_filename(struct task_struct *p)
 
 	dpath = &exe_file->f_path;
 
-	buff = kmalloc(PATH_MAX, GFP_KERNEL);
+	buff = kzalloc(PATH_MAX, GFP_ATOMIC);
 	if (buff)
 		path = d_path(dpath, buff, PATH_MAX);
 
@@ -265,7 +208,7 @@ char *defex_get_filename(struct task_struct *p)
 
 out_filename:
 	if (path && !IS_ERR(path))
-		filename = kstrdup(path, GFP_KERNEL);
+		filename = kstrdup(path, GFP_ATOMIC);
 
 	if (!filename)
 		filename = (char *)unknown_file;
@@ -288,7 +231,7 @@ char* defex_resolve_filename(const char *name, char **out_buff)
 	if (*out_buff)
 		buff = *out_buff;
 	else
-		buff = kmalloc(PATH_MAX, GFP_KERNEL);
+		buff = kzalloc(PATH_MAX, GFP_ATOMIC);
 	if (buff) {
 		if (!kern_path(name, LOOKUP_FOLLOW, &path)) {
 			target_file = d_path(&path, buff, PATH_MAX);

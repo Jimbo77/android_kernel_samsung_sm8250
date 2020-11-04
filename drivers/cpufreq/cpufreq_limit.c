@@ -755,7 +755,7 @@ store_one(ltl_min_lock, ltl_min_lock);
 static ssize_t store_ltl_divider(struct kobject *a, struct kobj_attribute *b,
 				const char *buf, size_t count)
 {
-	unsigned int input = 0;
+	unsigned int input;
 	int ret;
 
 	ret = kstrtouint(buf, 0, &input);

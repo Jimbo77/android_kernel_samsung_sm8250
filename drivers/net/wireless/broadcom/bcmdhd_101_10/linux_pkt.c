@@ -1,7 +1,7 @@
 /*
  * Linux Packet (skb) interface
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #include <typedefs.h>
@@ -572,7 +572,7 @@ osl_pkt_orphan_partial(struct sk_buff *skb)
 		return;
 
 	if (unlikely(!p_tcp_wfree)) {
-		/* this is a hack to get tcp_wfree pointer since it's not
+		/* XXX: this is a hack to get tcp_wfree pointer since it's not
 		 * exported. There are two possible call back function pointer
 		 * stored in skb->destructor: tcp_wfree and sock_wfree.
 		 * This expansion logic should only apply to TCP traffic which

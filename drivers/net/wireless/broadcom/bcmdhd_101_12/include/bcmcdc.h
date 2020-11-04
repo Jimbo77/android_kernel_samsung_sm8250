@@ -21,7 +21,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 #ifndef _bcmcdc_h_
 #define	_bcmcdc_h_

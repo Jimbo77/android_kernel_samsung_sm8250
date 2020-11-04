@@ -453,7 +453,6 @@ void init_hugepage_pool(void)
 	long hugepage_quota = get_hugepage_quota();
 	long avail_low = totalram_pages >> 2;
 	long avail_high = avail_low + (avail_low >> 2);
-	uint32_t totalram_pages_uint = totalram_pages;
 
 	for_each_zone(zone) {
 		u64 num_pages;
@@ -464,15 +463,15 @@ void init_hugepage_pool(void)
 		 * zones do not change at runtime
 		 */
 		num_pages = (u64)hugepage_quota * zone->managed_pages;
-		do_div(num_pages, totalram_pages_uint);
+		do_div(num_pages, totalram_pages);
 		nr_hugepages_quota[zidx] = (num_pages >> HUGEPAGE_ORDER);
 		nr_hugepages_limit[zidx] = nr_hugepages_quota[zidx];
 
 		hugepage_avail_low[zidx] = (u64)avail_low * zone->managed_pages;
-		do_div(hugepage_avail_low[zidx], totalram_pages_uint);
+		do_div(hugepage_avail_low[zidx], totalram_pages);
 
 		hugepage_avail_high[zidx] = (u64)avail_high * zone->managed_pages;
-		do_div(hugepage_avail_high[zidx], totalram_pages_uint);
+		do_div(hugepage_avail_high[zidx], totalram_pages);
 
 		spin_lock_init(&hugepage_list_lock[zidx]);
 		spin_lock_init(&hugepage_nonzero_list_lock[zidx]);
@@ -568,7 +567,7 @@ static long hugepage_calculate_limits_under_zone(
 			get_zone_pool_pages(zidx) : get_zone_pool_pages_unsafe(zidx);
 		long pool_pages_should_be = current_pool_pages;
 		long avail_pages_should_be = avail_pages;
-		long quota_pages = ((long)nr_hugepages_quota[zidx]) << HUGEPAGE_ORDER;
+		long quota_pages = nr_hugepages_quota[zidx] << HUGEPAGE_ORDER;
 
 		prev_limit = nr_hugepages_limit[zidx];
 		if (zidx <= high_zoneidx) {
@@ -1016,10 +1015,10 @@ static int kzerod_enabled_param_set(const char *val,
 	if (!prev && kzerod_enabled) {
 		kzerod_state = KZEROD_RUNNING,
 		wake_up(&kzerod_wait);
-		trace_printk("%s\n", "kzerod: enabled");
+		trace_printk("kzerod: enabled\n");
 	} else if (prev && !kzerod_enabled) {
 		drain_zeroed_page();
-		trace_printk("%s\n", "kzerod: disabled");
+		trace_printk("kzerod: disabled\n");
 	}
 	return error;
 }

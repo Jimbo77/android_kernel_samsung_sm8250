@@ -72,13 +72,6 @@
 
 #ifdef PRIVACY_MASK
 struct ether_addr privacy_addrmask;
-
-/* RAM accessor function to avoid 'privacy_addrmask' in ROM/RAM shared data section. */
-static struct ether_addr *
-BCMRAMFN(privacy_addrmask_get)(void)
-{
-	return &privacy_addrmask;
-}
 #endif /* PRIVACY_MASK */
 
 #ifdef BCMDRIVER
@@ -443,6 +436,7 @@ BCMFASTPATH(pktsetprio_qms)(void *pkt, uint8* up_table, bool update_vtag)
 
 		pktdata = (uint8 *)PKTDATA(OSH_NULL, pkt);
 		pktlen = PKTLEN(OSH_NULL, pkt);
+
 		if (pktgetdscp(pktdata, pktlen, &dscp)) {
 			rc = PKTPRIO_DSCP;
 			user_priority = dscp2up(up_table, dscp);
@@ -466,14 +460,12 @@ BCMFASTPATH(pktgetdscp)(uint8 *pktdata, uint pktlen, uint8 *dscp)
 	bool rc = FALSE;
 
 	/* minimum length is ether header and IP header */
-	if (pktlen < (sizeof(struct ether_header) + IPV4_MIN_HEADER_LEN)) {
+	if (pktlen < sizeof(struct ether_header) + IPV4_MIN_HEADER_LEN)
 		return FALSE;
-	}
 
 	eh = (struct ether_header *) pktdata;
 
-	if ((eh->ether_type == HTON16(ETHER_TYPE_IP)) ||
-		(eh->ether_type == HTON16(ETHER_TYPE_IPV6))) {
+	if (eh->ether_type == HTON16(ETHER_TYPE_IP)) {
 		ip_body = pktdata + sizeof(struct ether_header);
 		*dscp = IP_DSCP46(ip_body);
 		rc = TRUE;
@@ -959,7 +951,7 @@ bcm_mwbmap_force(struct bcm_mwbmap * mwbmap_hdl, uint32 bitix)
 
 /* Free a previously allocated index back into the multiword bitmap allocator */
 void
-BCMPOSTTRAPFASTPATH(bcm_mwbmap_free)(struct bcm_mwbmap * mwbmap_hdl, uint32 bitix)
+BCMFASTPATH(bcm_mwbmap_free)(struct bcm_mwbmap * mwbmap_hdl, uint32 bitix)
 {
 	bcm_mwbmap_t * mwbmap_p;
 	uint32 wordix, bitmap, *bitmap_p;
@@ -1455,7 +1447,7 @@ dll_pool_alloc(dll_pool_t * dll_pool_p)
 }
 
 void
-BCMPOSTTRAPFN(dll_pool_free)(dll_pool_t * dll_pool_p, void * elem_p)
+dll_pool_free(dll_pool_t * dll_pool_p, void * elem_p)
 {
 	dll_t * node_p = (dll_t *)elem_p;
 	dll_prepend(&dll_pool_p->free_list, node_p);
@@ -1479,7 +1471,7 @@ bool bcm_bprintf_bypass = FALSE;
 
 /* Initialization of bcmstrbuf structure */
 void
-BCMPOSTTRAPFN(bcm_binit)(struct bcmstrbuf *b, char *buf, uint size)
+bcm_binit(struct bcmstrbuf *b, char *buf, uint size)
 {
 	b->origsize = b->size = size;
 	b->origbuf = b->buf = buf;
@@ -1490,7 +1482,7 @@ BCMPOSTTRAPFN(bcm_binit)(struct bcmstrbuf *b, char *buf, uint size)
 
 /* Buffer sprintf wrapper to guard against buffer overflow */
 int
-BCMPOSTTRAPFN(bcm_bprintf)(struct bcmstrbuf *b, const char *fmt, ...)
+bcm_bprintf(struct bcmstrbuf *b, const char *fmt, ...)
 {
 	va_list ap;
 	int r;
@@ -1695,20 +1687,19 @@ int
 BCMRAMFN(bcm_addrmask_set)(int enable)
 {
 #ifdef PRIVACY_MASK
-	struct ether_addr *privacy = privacy_addrmask_get();
 	if (enable) {
 		/* apply mask as (For SS)
 		 * orig		: 12:34:56:78:90:ab
 		 * masked	: 12:xx:xx:xx:x0:ab
 		 */
-		privacy->octet[1] = privacy->octet[2] =
-			privacy->octet[3] = 0;
-		privacy->octet[0] = privacy->octet[5] = 0xff;
-		privacy->octet[4] = 0x0f;
+		privacy_addrmask.octet[1] = privacy_addrmask.octet[2] =
+			privacy_addrmask.octet[3] = 0;
+		privacy_addrmask.octet[0] = privacy_addrmask.octet[5] = 0xff;
+		privacy_addrmask.octet[4] = 0x0f;
 	} else
 	{
 		/* No masking. All are 0xff. */
-		memcpy(privacy, &ether_bcast, sizeof(struct ether_addr));
+		memcpy(&privacy_addrmask, &ether_bcast, sizeof(struct ether_addr));
 	}
 
 	return BCME_OK;
@@ -1723,8 +1714,7 @@ int
 bcm_addrmask_get(int *val)
 {
 #ifdef PRIVACY_MASK
-	struct ether_addr *privacy = privacy_addrmask_get();
-	if (!eacmp(&ether_bcast, privacy)) {
+	if (!eacmp(&ether_bcast, &privacy_addrmask)) {
 		*val = FALSE;
 	} else {
 		*val = TRUE;
@@ -1735,27 +1725,6 @@ bcm_addrmask_get(int *val)
 	BCM_REFERENCE(val);
 	return BCME_UNSUPPORTED;
 #endif
-}
-
-uint64
-BCMRAMFN(bcm_ether_ntou64)(const struct ether_addr *ea)
-{
-	uint64 mac;
-	struct ether_addr addr;
-
-	memcpy(&addr, ea, sizeof(struct ether_addr));
-
-#ifdef PRIVACY_MASK
-	struct ether_addr *privacy = privacy_addrmask_get();
-	if (!ETHER_ISMULTI(ea)) {
-		*(uint32*)(&addr.octet[0]) &= *((uint32*)&privacy->octet[0]);
-		*(uint16*)(&addr.octet[4]) &= *((uint16*)&privacy->octet[4]);
-	}
-#endif /*  PRIVACY_MASK */
-
-	mac = ((uint64)HTON16(*((const uint16*)&addr.octet[4]))) << 32 |
-		HTON32(*((const uint32*)&addr.octet[0]));
-	return (mac);
 }
 
 char *
@@ -2664,7 +2633,7 @@ EXIT:
 #endif /* BCM_OBJECT_TRACE */
 
 uint8 *
-BCMPOSTTRAPFN(bcm_write_tlv)(int type, const void *data, uint datalen, uint8 *dst)
+bcm_write_tlv(int type, const void *data, uint datalen, uint8 *dst)
 {
 	uint8 *new_dst = dst;
 	bcm_tlv_t *dst_tlv = (bcm_tlv_t *)dst;
@@ -2760,8 +2729,7 @@ bcm_write_tlv_ext(uint8 type, uint8 ext, const void *data, uint8 datalen, uint8 
 }
 
 uint8 *
-BCMPOSTTRAPFN(bcm_write_tlv_safe)(int type, const void *data, uint datalen, uint8 *dst,
-	uint dst_maxlen)
+bcm_write_tlv_safe(int type, const void *data, uint datalen, uint8 *dst, uint dst_maxlen)
 {
 	uint8 *new_dst = dst;
 
@@ -3475,13 +3443,12 @@ bcm_format_field(const bcm_bit_desc_ex_t *bd, uint32 flags, char* buf, uint len)
 int
 bcm_format_flags(const bcm_bit_desc_t *bd, uint32 flags, char* buf, uint len)
 {
-	uint i;
-	char *p = buf;
-	char *end =  (buf + len);
+	int i;
+	char* p = buf;
 	char hexstr[16];
+	uint slen = 0, nlen = 0;
 	uint32 bit;
 	const char* name;
-	bool err = FALSE;
 
 	if (len < 2 || !buf)
 		return 0;
@@ -3493,37 +3460,29 @@ bcm_format_flags(const bcm_bit_desc_t *bd, uint32 flags, char* buf, uint len)
 		name = bd[i].name;
 		if (bit == 0 && flags != 0) {
 			/* print any unnamed bits */
-			snprintf(hexstr, sizeof(hexstr), "0x%X", flags);
+			snprintf(hexstr, 16, "0x%X", flags);
 			name = hexstr;
 			flags = 0;	/* exit loop */
-		} else if ((flags & bit) == 0) {
+		} else if ((flags & bit) == 0)
 			continue;
-		}
 		flags &= ~bit;
-
-		/* Print named bit. */
-		p += strlcpy(p, name, (end - p));
-		if (p == end) {
-			/* Truncation error. */
-			err = TRUE;
+		nlen = (int)strlen(name);
+		slen += nlen;
+		/* count btwn flag space */
+		if (flags != 0)
+			slen += 1;
+		if (memcpy_s(p, len, name, nlen + 1) != BCME_OK) {
 			break;
 		}
-
-		/* Add space delimiter if there are more bits. */
-		if (flags != 0) {
-			p += strlcpy(p, " ", (end - p));
-			if (p == end) {
-				/* Truncation error. */
-				err = TRUE;
-				break;
-			}
-		}
+		p += nlen;
+		/* copy btwn flag space and NULL char */
+		if (flags != 0)
+			p += snprintf(p, 2, " ");
 	}
 
 	/* indicate the str was too short */
-	if (err) {
-		ASSERT(len >= 2u);
-		buf[len - 2u] = '>';
+	if (flags != 0) {
+		p += snprintf(p, 2, ">");
 	}
 
 	return (int)(p - buf);
@@ -3895,7 +3854,7 @@ bcm_mw_to_qdbm(uint16 mw)
 }
 
 uint
-BCMPOSTTRAPFN(bcm_bitcount)(const uint8 *bitmap, uint length)
+bcm_bitcount(uint8 *bitmap, uint length)
 {
 	uint bitcount = 0, i;
 	uint8 tmp;
@@ -3997,7 +3956,7 @@ isclr(const void *array, uint bit)
 #endif /* setbit */
 
 void
-BCMPOSTTRAPFN(set_bitrange)(void *array, uint start, uint end, uint maxbit)
+set_bitrange(void *array, uint start, uint end, uint maxbit)
 {
 	uint startbyte = start/NBBY;
 	uint endbyte = end/NBBY;
@@ -4059,11 +4018,11 @@ clr_bitrange(void *array, uint start, uint end, uint maxbit)
 void
 set_bitrange_u32(void *array, uint start, uint end, uint maxbit)
 {
-	uint startword = start/(uint)(NBBY * sizeof(uint32));
-	uint endword = end/(uint)(NBBY * sizeof(uint32));
-	uint startwordstartbit = start % (uint)(NBBY * sizeof(uint32));
-	uint endwordlastbit = end % (uint)(NBBY * sizeof(uint32));
-	uint u32msbnum = NBBY * (uint)sizeof(uint32) - 1U; /* Used to caluculate bit number from MSB */
+	uint startword = start/(NBBY * sizeof(uint32));
+	uint endword = end/(NBBY * sizeof(uint32));
+	uint startwordstartbit = start % (NBBY * sizeof(uint32));
+	uint endwordlastbit = end % (NBBY * sizeof(uint32));
+	uint u32msbnum = NBBY * sizeof(uint32) - 1U; /* Used to caluculate bit number from MSB */
 	uint i;
 	uint32 setbitsword;
 	uint32 u32max = ~0U;
@@ -4106,11 +4065,11 @@ set_bitrange_u32(void *array, uint start, uint end, uint maxbit)
 void
 clr_bitrange_u32(void *array, uint start, uint end, uint maxbit)
 {
-	uint startword = start/(uint)(NBBY * sizeof(uint32));
-	uint endword = end/(uint)(NBBY * sizeof(uint32));
-	uint startwordstartbit = start % (uint)(NBBY * sizeof(uint32));
-	uint endwordlastbit = end % (uint)(NBBY * sizeof(uint32));
-	uint u32msbnum = NBBY * (uint)sizeof(uint32) - 1U; /* Used to caluculate bit number from MSB */
+	uint startword = start/(NBBY * sizeof(uint32));
+	uint endword = end/(NBBY * sizeof(uint32));
+	uint startwordstartbit = start % (NBBY * sizeof(uint32));
+	uint endwordlastbit = end % (NBBY * sizeof(uint32));
+	uint u32msbnum = NBBY * sizeof(uint32) - 1U; /* Used to caluculate bit number from MSB */
 	uint i;
 	uint32 clrbitsword;
 	uint32 u32max = ~0U;
@@ -4678,10 +4637,9 @@ bcm_match_buffers(const uint8 *b1, uint b1_len, const uint8 *b2, uint b2_len)
 void
 BCMRAMFN(bcm_ether_privacy_mask)(struct ether_addr *addr)
 {
-	struct ether_addr *privacy = privacy_addrmask_get();
 	if (addr && !ETHER_ISMULTI(addr)) {
-		*(uint32*)(&(addr->octet[0])) &= *((uint32*)&privacy->octet[0]);
-		*(uint16*)(&(addr->octet[4])) &= *((uint16*)&privacy->octet[4]);
+		*(uint32*)(&(addr->octet[0])) &= *((uint32*)&privacy_addrmask.octet[0]);
+		*(uint16*)(&(addr->octet[4])) &= *((uint16*)&privacy_addrmask.octet[4]);
 	}
 }
 #endif /* PRIVACY_MASK */
@@ -4881,44 +4839,4 @@ replace_nvram_variable(char *varbuf, unsigned int buflen, const char *variable,
 		*datalen = (unsigned int)(p + variable_record_len + 1  - varbuf);
 	}
 	return TRUE;
-}
-
-/*
- * Gets the ceil bit set to the nearest power of 2
- * val[in]	- value for which nearest power of 2 bit set to be returned
- * bitpos[out]	- the position of the nearest power of 2 bit set
- */
-uint8
-bcm_get_ceil_pow_2(uint val)
-{
-	uint8 bitpos = 0;
-	ASSERT(val);
-	if (val & (val-1)) {
-		/* val is not powers of 2.
-		 * pad it, so that allocation will be aligned to
-		 * next immediate powers of 2.
-		 */
-		bitpos = 1;
-	}
-	while (val >>= 1) {
-		bitpos ++;
-	}
-	return (bitpos);
-}
-
-/* bit shift operation in serialized buffer taking input bits % 8 */
-int buf_shift_right(uint8 *buf, uint16 len, uint8 bits)
-{
-	uint16 i;
-
-	if (len == 0 || (bits == 0) || (bits >= NBBY)) {
-		return BCME_BADARG;
-	}
-
-	for (i = len - 1u; i > 0; i--) {
-		buf[i] = (buf[i - 1u] << (NBBY - bits)) | (buf[i] >> bits);
-	}
-	buf[0] >>= bits;
-
-	return BCME_OK;
 }

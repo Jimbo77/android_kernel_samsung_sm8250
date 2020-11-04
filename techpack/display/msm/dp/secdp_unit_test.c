@@ -11,6 +11,8 @@
  * GNU General Public License for more details.
  *
  */
+#define pr_fmt(fmt)	"[drm-dp] " fmt
+
 #include "dp_debug.h"
 #include "dp_display.h"
 #include "sde_edid_parser.h"
@@ -80,7 +82,7 @@ static struct secdp_display_timing g_parsed_res[] = {
 };
 
 static void drm_mode_remove(struct drm_connector *connector,
-			struct drm_display_mode *mode)
+					struct drm_display_mode *mode)
 {
 	list_del(&mode->head);
 	drm_mode_destroy(connector->dev, mode);
@@ -96,7 +98,7 @@ bool secdp_unit_test_edid_parse(void)
 
 	connector = secdp_get_connector();
 	if (!connector) {
-		DP_ERR("fail to get connector\n");
+		pr_err("fail to get connector\n");
 		goto exit;
 	}
 
@@ -104,7 +106,7 @@ bool secdp_unit_test_edid_parse(void)
 
 	edid_ctrl = sde_edid_init();
 	if (!edid_ctrl) {
-		DP_ERR("edid_ctrl alloc failed\n");
+		pr_err("edid_ctrl alloc failed\n");
 		goto exit;
 	}
 
@@ -112,7 +114,7 @@ bool secdp_unit_test_edid_parse(void)
 
 	edid_ctrl->edid = (struct edid *)g_test_edid;
 	rc = _sde_edid_update_modes(connector, edid_ctrl);
-	DP_INFO("_sde_edid_update_modes, rc: %d\n", rc);
+	DP_DEBUG("_sde_edid_update_modes, rc: %d\n", rc);
 
 	/* init g_parsed_res */
 	for (i = 0; i < table_size; i++)
@@ -120,7 +122,7 @@ bool secdp_unit_test_edid_parse(void)
 
 	/* check resolutions */
 	list_for_each_entry(mode, &connector->probed_modes, head) {
-		DP_INFO("checking %s @ %d Hz..\n", mode->name, drm_mode_vrefresh(mode));
+		pr_info("checking %s @ %d Hz..\n", mode->name, drm_mode_vrefresh(mode));
 		for (i = 0; i < table_size; i++) {
 			bool interlaced = !!(mode->flags & DRM_MODE_FLAG_INTERLACE);
 
@@ -129,7 +131,7 @@ bool secdp_unit_test_edid_parse(void)
 				g_parsed_res[i].refresh_rate == drm_mode_vrefresh(mode) &&
 				g_parsed_res[i].interlaced == interlaced) {
 
-				/*all conditions are met, mark it as supported*/
+				/* since all conditions are met, mark it as supported */
 				g_parsed_res[i].supported = true;
 			}
 		}
@@ -149,13 +151,13 @@ bool secdp_unit_test_edid_parse(void)
 
 	/* check if num of supported resolutions are found without errors */
 	if (parsed_res_cnt != table_size) {
-		DP_ERR("count is not matched! res_cnt: %d, table_size: %d\n",
+		pr_err("count is not matched! parsed_res_cnt: %d, table_size: %d\n",
 			parsed_res_cnt, table_size);
 		goto exit;
 	}
 
 	ret = true;
 exit:
-	DP_INFO("returns %s\n", ret ? "true" : "false");
+	pr_info("returns %s\n", ret ? "true" : "false");
 	return ret;
 }

@@ -14,15 +14,16 @@
 #ifndef FINGERPRINT_H_
 #define FINGERPRINT_H_
 
-#undef DEBUG /* If you need pr_debug logs, changes this definition */
-#define pr_fmt(fmt) "fps_%s: " fmt, __func__
-
 #include <linux/clk.h>
 #include "fingerprint_sysfs.h"
 
 /* fingerprint debug timer */
 #define FPSENSOR_DEBUG_TIMER_SEC (10 * HZ)
-#define DETECT_ADM 1
+
+enum {
+	DETECT_NORMAL = 0,
+	DETECT_ADM,			/* Always on Detect Mode */
+};
 
 /* For Sensor Type Check */
 enum {
@@ -34,15 +35,14 @@ enum {
 	SENSOR_EGIS,
 	SENSOR_VIPER_WOG,
 	SENSOR_NAMSAN,
-	SENSOR_GOODIX,
+	SENSOR_GW32J,
 	SENSOR_QBT2000,
 	SENSOR_EGISOPTICAL,
-	SENSOR_GOODIXOPTICAL,
 	SENSOR_MAXIMUM,
 };
 
-#define SENSOR_STATUS_SIZE 12
+#define SENSOR_STATUS_SIZE 11
 static char sensor_status[SENSOR_STATUS_SIZE][10] = {"ooo", "unknown", "failed",
-	"viper", "raptor", "egis", "viper_wog", "namsan", "goodix", "qbt2000", "et7xx", "goodixopt"};
+	"viper", "raptor", "egis", "viper_wog", "namsan", "gw32j", "qbt2000", "et7xx"};
 
 #endif

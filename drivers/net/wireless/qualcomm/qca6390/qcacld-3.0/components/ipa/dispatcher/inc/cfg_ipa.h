@@ -157,25 +157,6 @@
 
 /*
  * <ini>
- * gIPAForceVotingEnable - IPA force voting enable
- * @Default: false
- *
- * This ini specifies to enable IPA force voting
- *
- * Related: N/A
- *
- * Supported Feature: IPA
- *
- * Usage: Internal
- *
- * </ini>
- */
-#define CFG_DP_IPA_ENABLE_FORCE_VOTING \
-		CFG_INI_BOOL("gIPAForceVotingEnable", \
-		false, "Ctrl to enable force voting")
-
-/*
- * <ini>
  * IpaUcTxBufCount - IPA tx buffer count
  * @Min: 0
  * @Max: 2048
@@ -204,7 +185,6 @@
 	CFG(CFG_DP_IPA_HIGH_BANDWIDTH_MBPS) \
 	CFG(CFG_DP_IPA_MEDIUM_BANDWIDTH_MBPS) \
 	CFG(CFG_DP_IPA_LOW_BANDWIDTH_MBPS) \
-	CFG(CFG_DP_IPA_ENABLE_FORCE_VOTING) \
 	CFG(CFG_DP_IPA_UC_TX_BUF_COUNT)
 
 #endif /* _CFG_IPA_H_ */

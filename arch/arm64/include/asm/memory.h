@@ -88,8 +88,7 @@
 #ifdef CONFIG_KASAN_EXTRA
 #define KASAN_THREAD_SHIFT	2
 #else
-/* Increase to *4, because of https://bugs.llvm.org/show_bug.cgi?id=38809 */
-#define KASAN_THREAD_SHIFT	2
+#define KASAN_THREAD_SHIFT	1
 #endif /* CONFIG_KASAN_EXTRA */
 #else
 #define KASAN_SHADOW_SIZE	(0)

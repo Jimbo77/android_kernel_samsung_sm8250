@@ -2,7 +2,7 @@
  * Broadcom SDIO/PCMCIA
  * Software-specific definitions shared between device and host side
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -19,7 +19,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef	_bcmsdpcm_h_
@@ -102,7 +102,7 @@
 /*
  * Software-defined protocol header
  */
-/* Replace all this with packed struct */
+/* XXX Replace all this with packed struct */
 
 /* Current protocol version */
 #define SDPCM_PROT_VERSION	4

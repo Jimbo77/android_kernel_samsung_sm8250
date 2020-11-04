@@ -49,10 +49,17 @@ static int dp_gpio_hpd_connect(struct dp_gpio_hpd_private *gpio_hpd, bool hpd)
 		goto error;
 	}
 
+#ifndef CONFIG_SEC_DISPLAYPORT
 	if (hpd)
 		rc = gpio_hpd->cb->configure(gpio_hpd->dev);
 	else
 		rc = gpio_hpd->cb->disconnect(gpio_hpd->dev);
+#else
+	if (hpd)
+		rc = gpio_hpd->cb->configure();
+	else
+		rc = gpio_hpd->cb->disconnect();
+#endif
 
 error:
 	return rc;
@@ -72,8 +79,13 @@ static int dp_gpio_hpd_attention(struct dp_gpio_hpd_private *gpio_hpd)
 
 	gpio_hpd->base.hpd_irq = true;
 
+#ifndef CONFIG_SEC_DISPLAYPORT
 	if (gpio_hpd->cb && gpio_hpd->cb->attention)
 		rc = gpio_hpd->cb->attention(gpio_hpd->dev);
+#else
+	if (gpio_hpd->cb && gpio_hpd->cb->attention)
+		rc = gpio_hpd->cb->attention();
+#endif
 
 error:
 	return rc;

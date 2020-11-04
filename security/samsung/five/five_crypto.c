@@ -29,11 +29,10 @@
 #include <linux/slab.h>
 #include <crypto/hash.h>
 #include <crypto/hash_info.h>
-#include <linux/freezer.h>
 #include "five.h"
 #include "five_crypto_comp.h"
 #include "five_porting.h"
-#include "security/integrity/integrity.h"
+#include "integrity/integrity.h"
 
 struct ahash_completion {
 	struct completion completion;
@@ -218,8 +217,6 @@ static void ahash_complete(struct crypto_async_request *req, int err)
 
 static int ahash_wait(int err, struct ahash_completion *res)
 {
-	try_to_freeze();
-
 	switch (err) {
 	case 0:
 		break;
@@ -382,9 +379,7 @@ static int five_calc_file_hash_tfm(struct file *file,
 		return -EINVAL;
 
 	shash->tfm = tfm;
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
 	shash->flags = 0;
-	#endif
 
 	rc = crypto_shash_init(shash);
 	if (rc != 0)
@@ -416,8 +411,6 @@ static int five_calc_file_hash_tfm(struct file *file,
 			break;
 		offset += rbuf_len;
 
-		try_to_freeze();
-
 		rc = crypto_shash_update(shash, rbuf, rbuf_len);
 		if (rc)
 			break;
@@ -446,9 +439,7 @@ static int five_calc_hash_tfm(const u8 *data, size_t data_len,
 		return -EINVAL;
 
 	shash->tfm = tfm;
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
 	shash->flags = 0;
-	#endif
 
 	rc = crypto_shash_init(shash);
 	if (rc != 0)

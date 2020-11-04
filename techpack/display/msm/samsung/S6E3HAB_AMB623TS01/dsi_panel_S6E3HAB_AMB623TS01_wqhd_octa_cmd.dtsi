@@ -2545,7 +2545,7 @@
 			29 00 00 00 00 00 03 F0 5A 5A
 			29 00 00 00 00 00 03 B1 00 00	/* AOR Setting, this will be updated by ss_aid() */
 			29 00 00 00 00 00 03 B0 06 B1
-			29 00 00 00 00 00 02 B1 80	/* AID 4-Cycle */
+			29 00 00 00 00 00 05 B1 80	/* AID 4-Cycle */
 			29 01 00 00 01 00 02 F7 0F	/* Gamma, LTPS(AID) update */
 			29 00 00 00 00 00 03 F0 A5 A5
 		];
@@ -2657,14 +2657,12 @@
 			29 01 00 00 00 00 02 F7 0F	/* 17. Gamma, LTPS(AID) update */
 		];
 
-		samsung,rsc_4_frame_idle;
-
 		/* GFX HAL set max mdp performance mode before VRR change,
 		 * then set back to normal mode, even VRR work is done.
 		 * Delay to set back to normal MDP performance mode.
 		 */
 		/*samsung,support_delayed_perf; */
-		samsung,support_vrr_based_bl; /* VRR Variable Refresh Rate */
+		samsung,support_vrr; /* VRR Variable Refresh Rate */
 		samsung,support_brr; /* VRR Bridge Refresh Rate */
 		/*samsung,support_black_frame;*/ /* VRR: black frame insertion during HS<->NM transition */
 
@@ -2705,12 +2703,12 @@
 		samsung,irc_size = <33>;
 		samsung,dbv_size = <2>;
 
-		samsung,flash_gamma_type = "flash";
+		samsung,support_flash_gamma;
 
 		/* dsi / spi - default is dsi */
 		samsung,flash_read_intf = "spi";
 
-		samsung,br_tables {
+		samsung,flash_gamma_tables {
 			vrr60@0 {
 				samsung,refresh_rate = <60>;
 
@@ -2970,7 +2968,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -3134,7 +3132,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -3295,7 +3293,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -3407,18 +3405,12 @@
 				qcom,mdss-dsi-h-front-porch = <50>;
 				qcom,mdss-dsi-h-sync-skew = <0>;
 				qcom,mdss-dsi-v-pulse-width = <100>;
-				qcom,mdss-dsi-v-back-porch = <99>;
-				qcom,mdss-dsi-v-front-porch = <3703>;
+				qcom,mdss-dsi-v-back-porch = <100>;
+				qcom,mdss-dsi-v-front-porch = <3702>;
 
 				samsung,mdss-dsi-sot-hs-mode;
 				qcom,mdss-dsi-panel-framerate = <60>;
-				/* In DDI side, 60HS mode has same Scan of Time of 120HS mode.
-				 * So MDP is required to set same MDP clock for both of 60HS and 120HS.
-				 * But, 60HS mode triggers TE riging early about 8.3ms (3200+16+16 lines)
-				 * before DDI starts to scan, so there is no tearing
-				 * even it lowers MDP clock as 60NM mode.
-				 */
-				qcom,mdss-mdp-transfer-time-us = <15866>; // 60hz nm
+				qcom,mdss-mdp-transfer-time-us = <7533>;
 				qcom,mdss-dsi-panel-clockrate = <1157000000>;
 				qcom,mdss-dsi-panel-phy-timings = [00 26 0A 0A 27 25 0A 0A 07 02 04 00 1F 1A];
 				qcom,mdss-dsi-t-clk-post = <0x1A>;
@@ -3489,7 +3481,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -3679,7 +3671,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -3839,7 +3831,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4002,7 +3994,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4167,7 +4159,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4279,18 +4271,12 @@
 				qcom,mdss-dsi-h-front-porch = <100>;
 				qcom,mdss-dsi-h-sync-skew = <0>;
 				qcom,mdss-dsi-v-pulse-width = <200>;
-				qcom,mdss-dsi-v-back-porch = <199>;
-				qcom,mdss-dsi-v-front-porch = <3953>;
+				qcom,mdss-dsi-v-back-porch = <200>;
+				qcom,mdss-dsi-v-front-porch = <3952>;
 
 				samsung,mdss-dsi-sot-hs-mode;
 				qcom,mdss-dsi-panel-framerate = <60>;
-				/* In DDI side, 60HS mode has same Scan of Time of 120HS mode.
-				 * So MDP is required to set same MDP clock for both of 60HS and 120HS.
-				 * But, 60HS mode triggers TE riging early about 8.3ms (3200+16+16 lines)
-				 * before DDI starts to scan, so there is no tearing
-				 * even it lowers MDP clock as 60NM mode.
-				 */
-				qcom,mdss-mdp-transfer-time-us = <15866>; // 60hz nm
+				qcom,mdss-mdp-transfer-time-us = <7533>;
 				qcom,mdss-dsi-panel-clockrate = <1157000000>;
 				qcom,mdss-dsi-panel-phy-timings = [00 26 0A 0A 27 25 0A 0A 07 02 04 00 1F 1A];
 				qcom,mdss-dsi-t-clk-post = <0x1A>;
@@ -4361,7 +4347,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4550,7 +4536,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4710,7 +4696,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */
@@ -4874,7 +4860,7 @@
 					29 00 00 00 0A 00 03 F0 A5 A5		/* TEST KEY2 Disable*/
 
 					/* Flash Select for mAFPC Image Data Tx */
-					/* Flash Select CMD should be transferred after sleep out cmd within 80ms */
+					/* Flash Select CMD should be transfered after sleep out cmd within 80ms */
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable */
 					29 00 00 00 00 00 03 B0 09 FE	/* Global Param */
 					29 00 00 00 00 00 02 FE 12		/* Flash Select */

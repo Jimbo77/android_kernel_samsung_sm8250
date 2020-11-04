@@ -1,6 +1,0 @@
-config SPU_VERIFY
-	bool "SPU Sign Verify Driver"
-	default n
-	help
-	  This option enables SPU sign verify driver.
-

@@ -14,14 +14,10 @@
 #include <sound/samsung/sec_audio_sysfs.h>
 #include "bigdata_cirrus_sysfs_cb.h"
 
-static struct snd_soc_component *cirrus_amp_component = NULL;
+#define CIRRUS_LEFT_SUFFIX "_left"
+#define CIRRUS_RIGHT_SUFFIX "_right"
 
-static const char *cirrus_amp_suffix[AMP_ID_MAX] = {
-	[AMP_0] = "_0",
-	[AMP_1] = "_1",
-	[AMP_2] = "_2",
-	[AMP_3] = "_3",
-};
+static struct snd_soc_component *cirrus_amp_component = NULL;
 
 static int get_cirrus_amp_temperature_max(enum amp_id id)
 {
@@ -36,12 +32,18 @@ static int get_cirrus_amp_temperature_max(enum amp_id id)
 
 	dev_dbg(component->dev, "%s: %d\n", __func__, id);
 
-	if (id >= AMP_ID_MAX) {
+	switch (id) {
+	case LEFT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_LEFT_SUFFIX);
+		break;
+	case RIGHT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_RIGHT_SUFFIX);
+		break;
+	default:
 		dev_err(component->dev, "%s: invalid id\n", __func__);
 		return -EINVAL;
 	}
 
-	cirrus_bd_index = cirrus_bd_get_index_from_suffix(cirrus_amp_suffix[id]);
 	if (cirrus_bd_index < 0) {
 		dev_err(component->dev, "%s: invalid suffix\n", __func__);
 		return -EINVAL;
@@ -68,18 +70,24 @@ static int get_cirrus_amp_temperature_keep_max(enum amp_id id)
 
 	dev_dbg(component->dev, "%s: %d\n", __func__, id);
 
-	if (id >= AMP_ID_MAX) {
+	switch (id) {
+	case LEFT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_LEFT_SUFFIX);
+		break;
+	case RIGHT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_RIGHT_SUFFIX);
+		break;
+	default:
 		dev_err(component->dev, "%s: invalid id\n", __func__);
 		return -EINVAL;
 	}
 
-	cirrus_bd_index = cirrus_bd_get_index_from_suffix(cirrus_amp_suffix[id]);
 	if (cirrus_bd_index < 0) {
 		dev_err(component->dev, "%s: invalid suffix\n", __func__);
 		return -EINVAL;
 	}
 
-	value = cirrus_bd_data.max_temp_keep[cirrus_bd_index] >> CS35L41_BD_TEMP_RADIX;
+	value = cirrus_bd_data.max_temp[cirrus_bd_index] >> CS35L41_BD_TEMP_RADIX;
 
 	dev_info(component->dev, "%s: cirrus_bd_index %d value %d\n", __func__, cirrus_bd_index, value);
 
@@ -99,12 +107,18 @@ static int get_cirrus_amp_temperature_overcount(enum amp_id id)
 
 	dev_dbg(component->dev, "%s: %d\n", __func__, id);
 
-	if (id >= AMP_ID_MAX) {
+	switch (id) {
+	case LEFT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_LEFT_SUFFIX);
+		break;
+	case RIGHT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_RIGHT_SUFFIX);
+		break;
+	default:
 		dev_err(component->dev, "%s: invalid id\n", __func__);
 		return -EINVAL;
 	}
 
-	cirrus_bd_index = cirrus_bd_get_index_from_suffix(cirrus_amp_suffix[id]);
 	if (cirrus_bd_index < 0) {
 		dev_err(component->dev, "%s: invalid suffix\n", __func__);
 		return -EINVAL;
@@ -131,12 +145,18 @@ static int get_cirrus_amp_excursion_max(enum amp_id id)
 
 	dev_dbg(component->dev, "%s: %d\n", __func__, id);
 
-	if (id >= AMP_ID_MAX) {
+	switch (id) {
+	case LEFT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_LEFT_SUFFIX);
+		break;
+	case RIGHT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_RIGHT_SUFFIX);
+		break;
+	default:
 		dev_err(component->dev, "%s: invalid id\n", __func__);
 		return -EINVAL;
 	}
 
-	cirrus_bd_index = cirrus_bd_get_index_from_suffix(cirrus_amp_suffix[id]);
 	if (cirrus_bd_index < 0) {
 		dev_err(component->dev, "%s: invalid suffix\n", __func__);
 		return -EINVAL;
@@ -165,12 +185,18 @@ static int get_cirrus_amp_excursion_overcount(enum amp_id id)
 
 	dev_dbg(component->dev, "%s: %d\n", __func__, id);
 
-	if (id >= AMP_ID_MAX) {
+	switch (id) {
+	case LEFT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_LEFT_SUFFIX);
+		break;
+	case RIGHT_AMP:
+		cirrus_bd_index = cirrus_bd_get_index_from_suffix(CIRRUS_RIGHT_SUFFIX);
+		break;
+	default:
 		dev_err(component->dev, "%s: invalid id\n", __func__);
 		return -EINVAL;
 	}
 
-	cirrus_bd_index = cirrus_bd_get_index_from_suffix(cirrus_amp_suffix[id]);
 	if (cirrus_bd_index < 0) {
 		dev_err(component->dev, "%s: invalid suffix\n", __func__);
 		return -EINVAL;

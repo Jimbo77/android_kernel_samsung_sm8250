@@ -66,11 +66,10 @@ struct ion_rbin_heap {
 };
 
 static struct page *alloc_rbin_page(struct ion_rbin_heap *rbin_heap,
-				    unsigned long size, bool may_dirty,
-				    unsigned long last_size)
+				    unsigned long size, bool may_dirty)
 {
-	struct page *page = ERR_PTR(-ENOMEM);
-	phys_addr_t paddr = -ENOMEM;
+	struct page *page = NULL;
+	phys_addr_t paddr;
 	void *addr;
 	int order;
 #ifndef CONFIG_ION_EXYNOS
@@ -78,27 +77,23 @@ static struct page *alloc_rbin_page(struct ion_rbin_heap *rbin_heap,
 #endif
 
 	trace_ion_rbin_partial_alloc_start(NULL, NULL, size, NULL);
-	order = min(get_order(last_size), get_order(size));
-	for (; order >= 0; order--) {
+	for (order = get_order(size); order >= 0; order--) {
 		size = min_t(unsigned long, size, PAGE_SIZE << order);
 		paddr = ion_rbin_allocate(size);
-		if (paddr == -ENOMEM)
-			continue;
-		if (paddr == -EBUSY)
-			page = ERR_PTR(-EBUSY);
-		break;
+		if (paddr != ION_RBIN_ALLOCATE_FAIL) {
+			page = phys_to_page(paddr);
+			INIT_LIST_HEAD(&page->lru);
+			break;
+		}
 	}
 
-	if (!IS_ERR_VALUE(paddr)) {
-		page = phys_to_page(paddr);
-		INIT_LIST_HEAD(&page->lru);
+	if (page) {
 		addr = page_address(page);
 		if (!may_dirty)
 			memset(addr, 0, size);
 		set_page_private(page, size);
-#ifdef CONFIG_ION_EXYNOS
 		__dma_flush_area(addr, size);
-#else
+#ifndef CONFIG_ION_EXYNOS
 		ion_pages_sync_for_device(dev, page, size, DMA_BIDIRECTIONAL);
 #endif
 	}
@@ -185,7 +180,6 @@ static int ion_rbin_heap_allocate(struct ion_heap *heap,
 	struct list_head pages;
 	struct page *page, *tmp;
 	unsigned long size_remain = PAGE_ALIGN(size);
-	unsigned long last_size = size_remain;
 	unsigned long nr_free;
 	int i = 0;
 #ifdef CONFIG_ION_EXYNOS
@@ -201,19 +195,11 @@ static int ion_rbin_heap_allocate(struct ion_heap *heap,
 	trace_ion_rbin_alloc_start(heap->name, buffer, size, NULL);
 	INIT_LIST_HEAD(&pages);
 	while (size_remain > 0) {
-		if (atomic_read(&rbin_pool_pages)) {
-			page = alloc_rbin_page_from_pool(rbin_heap,
-							 size_remain);
-			if (page)
-				goto got_pg;
-		}
-		page = alloc_rbin_page(rbin_heap, size_remain, may_dirty,
-				       last_size);
-		if (IS_ERR(page))
+		page = alloc_rbin_page_from_pool(rbin_heap, size_remain);
+		if (!page)
+			page = alloc_rbin_page(rbin_heap, size_remain, may_dirty);
+		if (!page)
 			goto free_pages;
-		else
-			last_size = page_private(page);
-got_pg:
 		list_add_tail(&page->lru, &pages);
 		size_remain -= page_private(page);
 		i++;
@@ -344,30 +330,18 @@ static int ion_rbin_heap_prereclaim(void *data)
 	unsigned int order;
 	unsigned long total_size;
 	unsigned long size = PAGE_SIZE << orders[0];
-	unsigned long last_size;
 	struct ion_page_pool *pool;
 	struct page *page;
-	unsigned long jiffies_bstop;
 
 	set_cpus_allowed_ptr(current, &rbin_cpumask);
 	while (true) {
 		wait_event_freezable(rbin_heap->waitqueue, rbin_heap->task_run);
-		jiffies_bstop = jiffies + (HZ / 10);
-		trace_printk("%s\n", "start");
+		trace_printk("start\n");
 		total_size = 0;
-		last_size = size;
 		while (true) {
-			page = alloc_rbin_page(rbin_heap, size, false,
-					       last_size);
-			if (PTR_ERR(page) == -ENOMEM)
+			page = alloc_rbin_page(rbin_heap, size, false);
+			if (!page)
 				break;
-			if (PTR_ERR(page) == -EBUSY) {
-				if (time_is_after_jiffies(jiffies_bstop))
-					continue;
-				else
-					break;
-			}
-			last_size = page_private(page);
 			order = get_order(page_private(page));
 			pool = rbin_heap->pools[order_to_index(order)];
 			ion_page_pool_free(pool, page);
@@ -390,7 +364,7 @@ static int ion_rbin_heap_shrink(void *data)
 	set_cpus_allowed_ptr(current, &rbin_cpumask);
 	while (true) {
 		wait_event_freezable(rbin_heap->waitqueue, rbin_heap->shrink_run);
-		trace_printk("%s\n", "start");
+		trace_printk("start\n");
 		total_size = 0;
 		while (true) {
 			page = alloc_rbin_page_from_pool(rbin_heap, size);

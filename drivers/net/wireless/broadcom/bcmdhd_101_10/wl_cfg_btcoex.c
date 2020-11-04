@@ -1,7 +1,7 @@
 /*
  * Linux cfg80211 driver - Dongle Host Driver (DHD) related
  *
- * Copyright (C) 2020, Broadcom.
+ * Copyright (C) 2019, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #include <net/rtnetlink.h>
@@ -128,7 +128,7 @@ dev_wlc_intvar_set_reg(struct net_device *dev, char *name, char *addr, char * va
 	return (dev_wlc_bufvar_set(dev, name, (char *)&reg_addr[0], sizeof(reg_addr)));
 }
 
-/* andrey: bt pkt period independant sco/esco session detection algo.  */
+/* XXX andrey: bt pkt period independant sco/esco session detection algo.  */
 static bool btcoex_is_sco_active(struct net_device *dev)
 {
 	int ioc_res = 0;
@@ -213,7 +213,7 @@ static int set_btc_esco_params(struct net_device *dev, bool trump_sco)
 			return -1;
 		}
 
-		/* pacify the eSco   */
+		/* XXX pacify the eSco   */
 		WL_TRACE(("override with [50,51,64,65,71]:"
 			  "0x%x 0x%x 0x%x 0x%x 0x%x\n",
 			  *(u32 *)(buf_reg50va_dhcp_on+4),
@@ -279,13 +279,13 @@ wl_cfg80211_bt_setflag(struct net_device *dev, bool set)
 #endif
 
 #if defined(BT_DHCP_eSCO_FIX)
-	/*  ANREY: New Yury's eSco pacifier */
+	/*  XXX ANREY: New Yury's eSco pacifier */
 	/* set = 1, save & turn on  0 - off & restore prev settings */
 	set_btc_esco_params(dev, set);
 #endif
 
 #if defined(BT_DHCP_USE_FLAGS)
-/*  ANdrey: old WI-FI priority boost via flags   */
+/*  XXX ANdrey: old WI-FI priority boost via flags   */
 	WL_TRACE(("WI-FI priority boost via bt flags, set:%d\n", set));
 	if (set == TRUE)
 		/* Forcing bt_flag7  */
@@ -378,7 +378,7 @@ btc_coex_idle:
 			break;
 	}
 
-	/* why we need this? */
+	/* XXX why we need this? */
 	net_os_wake_unlock(btcx_inf->dev);
 }
 
@@ -530,7 +530,7 @@ int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, dhd_pub_t *dhd, char *co
 			del_timer_sync(&btco_inf->timer);
 
 			if (btco_inf->bt_state != BT_DHCP_IDLE) {
-			/* ANDREY: case when framework signals DHCP end before STM timeout */
+			/* XXX ANDREY: case when framework signals DHCP end before STM timeout */
 			/* need to restore original btc flags & extra btc params */
 				WL_TRACE(("bt->bt_state:%d\n", btco_inf->bt_state));
 				/* wake up btcoex thread to restore btlags+params  */

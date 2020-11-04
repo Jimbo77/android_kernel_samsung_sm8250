@@ -18,7 +18,7 @@
  * modifications of the software.
  *
  *
- * <<Broadcom-WL-IPTag/Dual:>>
+ * <<Broadcom-WL-IPTag/Open:>>
  */
 
 #ifndef _proto_wpa_h_
@@ -223,7 +223,6 @@ typedef BWL_PRE_PACKED_STRUCT struct
 #define RSN_CAP_MFPC			0x0080
 #define RSN_CAP_SPPC			0x0400
 #define RSN_CAP_SPPR			0x0800
-#define RSN_CAP_OCVC			0x4000
 
 /* WPA capabilities defined in 802.11i */
 #define WPA_CAP_4_REPLAY_CNTRS		RSN_CAP_4_REPLAY_CNTRS
