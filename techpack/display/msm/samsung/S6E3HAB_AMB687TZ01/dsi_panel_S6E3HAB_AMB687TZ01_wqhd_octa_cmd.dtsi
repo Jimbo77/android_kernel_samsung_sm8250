@@ -102,7 +102,7 @@
 		qcom,mdss-dsi-stream = <0>;
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
-		qcom,mdss-dsi-panel-framerate = <60>;
+		qcom,mdss-dsi-panel-framerate = <120>;
 
 		qcom,mdss-pan-physical-width-dimension = <71>; /* 71.568mm, round-off */
 		qcom,mdss-pan-physical-height-dimension = <159>; /* 159.04mm, round-off */
